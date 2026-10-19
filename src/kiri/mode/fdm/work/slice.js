@@ -668,6 +668,37 @@ export function sliceOne(settings, widget, onupdate, ondone) {
         console.log({ slices: slices.map(s => s.supportsDiff) });
         }
 
+        // thicken narrow support regions to a minimum width so fins come out as
+        // consistent plates instead of thin slivers at polygon edges. only grows
+        // thin parts (never removes support); trimmed against the part right after
+        let minW = process.sliceSupportMinWidth || 0;
+        if (minW > 0) {
+            for (let slice of stack) {
+                let polys = slice.supports || [];
+                if (!polys.length) continue;
+                let o = { z: slice.z, flat: true, wasm: true };
+                // erode then regrow: what survives is wide enough; offsets return
+                // nothing when everything is thinner than the minimum width
+                let eroded = POLY.offset(polys, -minW / 2, o) || [];
+                let core = eroded.length ? (POLY.offset(eroded, minW / 2, o) || []) : [];
+                let thin = [];
+                POLY.subtract(polys, core, thin, null, slice.z, 0, { wasm: true });
+                let grown = thin.length ? (POLY.offset(thin, minW / 2, o) || []) : [];
+                let merged = POLY.union([ ...core, ...grown ], 0, true);
+                // belt: never grow past the belt plane
+                if (belt) {
+                    let boundsx = bounds.dim.x * 1.1;
+                    let boundsy = bounds.dim.y * 1.1;
+                    let skewy = slice.z * belt.slope;
+                    let clip = newPolygon()
+                        .centerRectangle(newPoint(0, 0, slice.z), boundsx, boundsy)
+                        .move({ x: 0, y: -boundsy / 2 + skewy, z: 0 });
+                    merged = POLY.trimTo(merged, [ clip ]);
+                }
+                slice.supports = merged;
+            }
+        }
+
         // trim using support part offset value
         let gaps = process.sliceSupportGap;
         for (let slice of stack) {

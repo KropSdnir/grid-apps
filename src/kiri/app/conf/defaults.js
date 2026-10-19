@@ -358,6 +358,7 @@ export const conf = {
                 sliceSupportMinArea: 0,
                 sliceSupportSpacing: 0,
                 sliceSupportMinLine: 0,
+                sliceSupportMinWidth: 0,
                 sliceSupportTie: 0,
                 sliceSupportVertical: 0,
                 sliceSupportType: "disabled",

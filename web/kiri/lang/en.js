@@ -496,6 +496,8 @@ self.lang['en-us'] = {
     sp_angl_l:      ["max overhang angle before","supporting pillar is generated","normal values 45-60","belt values 0-10"],
     sp_spac_s:      "spacing",
     sp_spac_l:      ["open gap between support lines","in millimeters. overrides density","when greater than 0"],
+    sp_minw_s:      "min width",
+    sp_minw_l:      ["thicken narrow support regions","up to this width so fins are","consistent. in millimeters","0 to disable"],
     sp_minl_s:      "min line",
     sp_minl_l:      ["drop support fill lines","shorter than this","in millimeters","0 to keep all"],
     sp_tie_s:       "tie layers",
