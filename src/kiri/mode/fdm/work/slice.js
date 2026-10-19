@@ -919,6 +919,8 @@ export function sliceOne(settings, widget, onupdate, ondone) {
                 angle: process.sliceSupportFill,
                 density,
                 spacingGap: params.sliceSupportSpacing || process.sliceSupportSpacing || 0,
+                minLine: params.sliceSupportMinLine || process.sliceSupportMinLine || 0,
+                tie: params.sliceSupportTie || process.sliceSupportTie || 0,
                 isBelt,
                 lineWidth,
                 outline: process.sliceSupportOutline !== false,
@@ -1797,7 +1799,7 @@ function areaFill({ promises: fillQ, polys, angle, spacing, output, minLen, maxL
  * @see CONSTANTS.SUPPORT_AUTO_ANGLE_TALL - Auto angle for tall polygons (1000 = 0°)
  * @see CONSTANTS.SUPPORT_CONNECT_DISTANCE_MULT - Distance multiplier for line connection (2x)
  */
-function layerSupportFill({ promises, slice, lineWidth, density, isBelt, angle, outline, gap, spacingGap }) {
+function layerSupportFill({ promises, slice, lineWidth, density, isBelt, angle, outline, gap, spacingGap, minLine, tie }) {
     let polys = slice.supports;
     if (polys) {
         supportPolyFill({
@@ -1809,6 +1811,9 @@ function layerSupportFill({ promises, slice, lineWidth, density, isBelt, angle, 
             polys,
             promises,
             spacingGap,
+            minLine,
+            // every Nth layer prints cross lines (0 degrees) that tie the fins together
+            tieLayer: tie > 0 && slice.index >= 0 && slice.index % tie === 0,
             z: slice.z
         });
     }
@@ -1856,7 +1861,7 @@ function layerSupportFill({ promises, slice, lineWidth, density, isBelt, angle, 
  * @see CONSTANTS.SUPPORT_INSET_RATIO - Inset ratio for fill area (1/3)
  * @see CONSTANTS.SUPPORT_CONNECT_DISTANCE_MULT - Distance multiplier for line connection (2x)
  */
-function supportPolyFill({ promises, polys, lineWidth, density, z, isBelt, angle, outline, spacingGap }) {
+function supportPolyFill({ promises, polys, lineWidth, density, z, isBelt, angle, outline, spacingGap, minLine, tieLayer }) {
     // calculate fill spacing: an explicit open gap between lines (mm) wins over density
     let spacing = spacingGap > 0 ? lineWidth + spacingGap : lineWidth * (1 / density);
     for (let poly of polys) {
@@ -1869,11 +1874,13 @@ function supportPolyFill({ promises, polys, lineWidth, density, z, isBelt, angle
         // do the fill
         if (inset && inset.length > 0) {
             areaFill({
-                angle: angle || auto,
+                angle: tieLayer ? CONSTANTS.SUPPORT_AUTO_ANGLE_TALL : (angle || auto),
                 output: poly.fill = [],
                 polys: inset,
                 promises,
-                spacing
+                spacing,
+                // drop fill lines shorter than this (mm): removes scraps at polygon edges
+                minLen: minLine > 0 && !tieLayer ? minLine : undefined
             });
             if (!outline && poly.fill.length) {
                 poly.fill = connect_lines(poly.fill, spacing * CONSTANTS.SUPPORT_CONNECT_DISTANCE_MULT);

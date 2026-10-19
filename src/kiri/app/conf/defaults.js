@@ -357,6 +357,8 @@ export const conf = {
                 beltPedestalBase: 0,
                 sliceSupportMinArea: 0,
                 sliceSupportSpacing: 0,
+                sliceSupportMinLine: 0,
+                sliceSupportTie: 0,
                 sliceSupportVertical: 0,
                 sliceSupportType: "disabled",
                 sliceSupportTree: false,

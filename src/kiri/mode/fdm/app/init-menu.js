@@ -122,6 +122,8 @@ export function menu() {
     sliceSupportAngle:   newInput(LANG.sp_angl_s, {title:LANG.sp_angl_l, convert:toFloat, bound:bound(0.0,90.0)}),
     sliceSupportDensity: newInput(LANG.sp_dens_s, {title:LANG.sp_dens_l, convert:toFloat, bound:bound(0.0,1.0)}),
     sliceSupportSpacing: newInput(LANG.sp_spac_s, {title:LANG.sp_spac_l, convert:toFloat, bound:bound(0.0,20.0)}),
+    sliceSupportMinLine: newInput(LANG.sp_minl_s, {title:LANG.sp_minl_l, convert:toFloat, bound:bound(0.0,50.0)}),
+    sliceSupportTie:     newInput(LANG.sp_tie_s,  {title:LANG.sp_tie_l,  convert:toInt,   bound:bound(0,200)}),
     sliceSupportOffset:  newInput(LANG.sp_offs_s, {title:LANG.sp_offs_l, convert:toFloat, bound:bound(0.0,200.0)}),
     sliceSupportExtra:   newInput(LANG.sp_xpnd_s, {title:LANG.sp_xpnd_l, convert:toFloat, bound:bound(0.0,10.0)}),
     sliceSupportVertical:newInput(LANG.sp_vert_s, {title:LANG.sp_vert_l, convert:toInt,   bound:bound(-2,2), show:isBelt}),
