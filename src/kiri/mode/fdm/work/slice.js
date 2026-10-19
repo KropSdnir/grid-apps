@@ -18,6 +18,7 @@ const CONSTANTS = {
     SUPPORT_AUTO_ANGLE_TALL: 1000,     // auto-angle for tall support polygons (0°)
     SUPPORT_INSET_RATIO: 1/3,          // inset support fill by 33% of line width
     SUPPORT_CONNECT_DISTANCE_MULT: 2,  // connect fill lines within 2x spacing
+    SUPPORT_TIE_SPACING: 10,           // mm between cross-tie lines on tie layers
 
     // Minimum areas and thresholds
     MIN_POLY_AREA: 0.1,                // minimum polygon area in mm²
@@ -1814,6 +1815,7 @@ function layerSupportFill({ promises, slice, lineWidth, density, isBelt, angle, 
             minLine,
             // every Nth layer prints cross lines (0 degrees) that tie the fins together
             tieLayer: tie > 0 && slice.index >= 0 && slice.index % tie === 0,
+            tieSpacing: CONSTANTS.SUPPORT_TIE_SPACING,
             z: slice.z
         });
     }
@@ -1861,7 +1863,7 @@ function layerSupportFill({ promises, slice, lineWidth, density, isBelt, angle, 
  * @see CONSTANTS.SUPPORT_INSET_RATIO - Inset ratio for fill area (1/3)
  * @see CONSTANTS.SUPPORT_CONNECT_DISTANCE_MULT - Distance multiplier for line connection (2x)
  */
-function supportPolyFill({ promises, polys, lineWidth, density, z, isBelt, angle, outline, spacingGap, minLine, tieLayer }) {
+function supportPolyFill({ promises, polys, lineWidth, density, z, isBelt, angle, outline, spacingGap, minLine, tieLayer, tieSpacing }) {
     // calculate fill spacing: an explicit open gap between lines (mm) wins over density
     let spacing = spacingGap > 0 ? lineWidth + spacingGap : lineWidth * (1 / density);
     for (let poly of polys) {
@@ -1878,7 +1880,8 @@ function supportPolyFill({ promises, polys, lineWidth, density, z, isBelt, angle
                 output: poly.fill = [],
                 polys: inset,
                 promises,
-                spacing,
+                // tie layers use a wide, sparse spacing so only a few cross lines are drawn
+                spacing: tieLayer ? Math.max(spacing, tieSpacing) : spacing,
                 // drop fill lines shorter than this (mm): removes scraps at polygon edges
                 minLen: minLine > 0 && !tieLayer ? minLine : undefined
             });
