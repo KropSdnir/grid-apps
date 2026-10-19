@@ -685,6 +685,7 @@ export function sliceOne(settings, widget, onupdate, ondone) {
 
         // drop support islands smaller than a minimum area (mm^2) so small
         // overhangs (holes, tiny lips) are bridged instead of getting thin poles
+        // (min-area filtering below runs first; the base plate is added after it)
         // islands are judged as whole columns: polygons on adjacent slices whose
         // bounds overlap are linked, and a column is kept if its largest cross
         // section reaches the minimum (so wide supports stay solid where they narrow)
@@ -722,6 +723,39 @@ export function sliceOne(settings, widget, onupdate, ondone) {
                     let node = byPoly.get(p);
                     return node && biggest[find(node.id)] >= minSupport;
                 });
+            }
+        }
+
+        // pedestal base plate (belt): fill the support footprint that sits on the
+        // belt into one clean rectangle instead of the ragged outline of the
+        // part's shadow. slicing layers cut the shadow differently each layer.
+        let plate = process.beltPedestalBase || 0;
+        if (belt && plate > 0) {
+            let touching = [];
+            let bx0 = Infinity, bx1 = -Infinity;
+            for (let slice of stack) {
+                let skewy = slice.z * belt.slope;
+                let on = (slice.supports || []).filter(p => p.bounds.maxy >= skewy - 0.05);
+                if (on.length) {
+                    touching.push(slice);
+                    for (let p of on) {
+                        bx0 = Math.min(bx0, p.bounds.minx);
+                        bx1 = Math.max(bx1, p.bounds.maxx);
+                    }
+                }
+            }
+            if (touching.length) {
+                let margin = lineWidth * 2;
+                bx0 -= margin;
+                bx1 += margin;
+                let zmin = touching[0].z, zmax = touching[touching.length - 1].z;
+                for (let slice of stack) {
+                    if (slice.z < zmin || slice.z > zmax) continue;
+                    let skewy = slice.z * belt.slope;
+                    let rect = newPolygon().centerRectangle(
+                        newPoint((bx0 + bx1) / 2, skewy - plate / 2, slice.z), bx1 - bx0, plate);
+                    slice.supports = POLY.union([ ...(slice.supports || []), rect ], 0, true);
+                }
             }
         }
     }

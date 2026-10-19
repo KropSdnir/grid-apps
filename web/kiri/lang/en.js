@@ -496,6 +496,8 @@ self.lang['en-us'] = {
     sp_angl_l:      ["max overhang angle before","supporting pillar is generated","normal values 45-60","belt values 0-10"],
     sp_vert_s:      "vertical",
     sp_vert_l:      ["belt printers: 0 = off","+/-1 sweep supports straight down","+/-2 project supports straight down"],
+    sp_base_s:      "pedestal base",
+    sp_base_l:      ["belt printers: thickness of a flat","rectangular base plate under","pedestal supports, in mm","0 to disable"],
     sp_mina_s:      "min area",
     sp_mina_l:      ["drop support columns whose","largest cross section is","smaller than this, in mm^2"],
     sp_xpnd_s:      "expand",

@@ -354,6 +354,7 @@ export const conf = {
                 sliceSupportOffset: 1.0,
                 sliceSupportOutline: true,
                 // sliceSupportSpan: 5,
+                beltPedestalBase: 0,
                 sliceSupportMinArea: 0,
                 sliceSupportVertical: 0,
                 sliceSupportType: "disabled",

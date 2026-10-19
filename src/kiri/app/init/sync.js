@@ -434,6 +434,7 @@ function setup_keybd_nav() {
             let setf = (k, v) => { let el = ui[k]; if (el) { el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })); } };
             if (ui.sliceSupportType.value === 'disabled') setf('sliceSupportType', 'automatic');
             setf('sliceSupportVertical', 2);
+            if (!(+ui.beltPedestalBase.value > 0)) setf('beltPedestalBase', 1.5);
             api.conf.update();
         }
         api.show.alert(`pedestal ${on ? 'on' : 'off'} for ${targets.length} model${targets.length === 1 ? '' : 's'}`, 3);
