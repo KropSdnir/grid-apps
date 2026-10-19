@@ -2,7 +2,7 @@
 
 import { layerProcessTop } from './post.js';
 import { fill, fill_fixed } from './fill.js';
-import { generateBeltAnchor, embossBeltPooch, finalizeBeltBounds } from './belt.js';
+import { generateBeltAnchor, generateBeltPrime, embossBeltPooch, finalizeBeltBounds } from './belt.js';
 import { getRangeParameters } from '../core/params.js';
 import { newPoint } from '../../../../geo/point.js';
 import { newPolygon } from '../../../../geo/polygon.js';
@@ -601,7 +601,20 @@ export function sliceOne(settings, widget, onupdate, ondone) {
             }
             // shadows accumulate down
             if (shadowSum) {
-                shadow = POLY.union([...shadow, ...shadowSum], minArea, true);
+                let carry = shadowSum;
+                // belt printers: a support face may lean no further than the
+                // printer's own tilt. sweep the shadow sideways as it goes down so
+                // the outer face drops vertically (world) instead of leaning
+                // sliceSupportVertical: +/-1 sweeps (keeps the angled shadow too),
+                // +/-2 projects straight down in world space (pure vertical prism)
+                let vert = process.sliceSupportVertical || 0;
+                if (belt && vert) {
+                    let sign = vert < 0 ? -1 : 1;
+                    let dy = sign * sliceHeight * (belt.slope || 1);
+                    carry = shadowSum.map(p => p.clone(true).move({ x: 0, y: dy, z: 0 }));
+                    if (Math.abs(vert) < 2) carry = [ ...carry, ...shadowSum ];
+                }
+                shadow = POLY.union([...shadow, ...carry], minArea, true);
             }
             // subtract slice top areas (widget boundaries) from shadow projection
             if (true) {
@@ -667,6 +680,48 @@ export function sliceOne(settings, widget, onupdate, ondone) {
                 clips = POLY.union(clips, minArea, true);
                 POLY.subtract(slice.supports, clips, rem, null, slice.z, minArea, { wasm: false });
                 slice.supports = rem;
+            }
+        }
+
+        // drop support islands smaller than a minimum area (mm^2) so small
+        // overhangs (holes, tiny lips) are bridged instead of getting thin poles
+        // islands are judged as whole columns: polygons on adjacent slices whose
+        // bounds overlap are linked, and a column is kept if its largest cross
+        // section reaches the minimum (so wide supports stay solid where they narrow)
+        let minSupport = process.sliceSupportMinArea || 0;
+        if (minSupport > 0) {
+            let nodes = [];
+            let byPoly = new Map();
+            let parent = [];
+            let find = i => { while (parent[i] !== i) i = parent[i] = parent[parent[i]]; return i; };
+            let overlap = (a, b) => a.minx <= b.maxx && b.minx <= a.maxx && a.miny <= b.maxy && b.miny <= a.maxy;
+            let prev = [];
+            for (let slice of stack) {
+                let cur = [];
+                for (let poly of slice.supports || []) {
+                    let node = { slice, poly, area: Math.abs(poly.area()), id: nodes.length };
+                    nodes.push(node);
+                    byPoly.set(poly, node);
+                    parent.push(node.id);
+                    for (let other of prev) {
+                        if (overlap(poly.bounds, other.poly.bounds)) {
+                            parent[find(node.id)] = find(other.id);
+                        }
+                    }
+                    cur.push(node);
+                }
+                prev = cur;
+            }
+            let biggest = {};
+            for (let node of nodes) {
+                let root = find(node.id);
+                biggest[root] = Math.max(biggest[root] || 0, node.area);
+            }
+            for (let slice of stack) {
+                slice.supports = (slice.supports || []).filter(p => {
+                    let node = byPoly.get(p);
+                    return node && biggest[find(node.id)] >= minSupport;
+                });
             }
         }
     }
@@ -1006,6 +1061,19 @@ export function sliceOne(settings, widget, onupdate, ondone) {
         // fill all supports (auto and manual)
         if (supportDensity) {
             await processSupportFills(0.8, 0.84);
+        }
+
+        // belt prime strip (and pedestal anchor), after supports exist
+        if (isBelt) {
+            generateBeltPrime({
+                slices,
+                widget,
+                process,
+                lineWidth,
+                sliceHeight,
+                extruder,
+                bedWidth: device.bedWidth
+            });
         }
 
         // brick/interleave mode processing

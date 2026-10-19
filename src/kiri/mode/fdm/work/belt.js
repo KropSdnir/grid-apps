@@ -102,9 +102,11 @@ export function generateBeltAnchor({ slices, widget, process, lineWidth, sliceHe
     let anchorlen = (process.beltAnchor || process.firstLayerBeltLead) * cosf;
 
     // offset used in support generation
+    let anchorTops = [];
     belt.anchor = {
         added: adds,
-        len: anchorlen
+        len: anchorlen,
+        tops: anchorTops
     };
 
     while (anchorlen && start && anchorlen >= sliceHeight) {
@@ -129,7 +131,9 @@ export function generateBeltAnchor({ slices, widget, process, lineWidth, sliceHe
         let z = addto.z;
         let y = (slope * z) - smin - (lineWidth / 2);
         let splat = newPolygon().add(minx, y, z).add(maxx, y, z).setOpen();
-        let snew = addto.addTop(splat).fill_sparse = [ splat ];
+        let atop = addto.addTop(splat);
+        let snew = atop.fill_sparse = [ splat ];
+        anchorTops.push({ slice: addto, top: atop });
         adds.push(snew);
         start = addto;
         anchorlen -= (step * slope);
@@ -165,6 +169,109 @@ export function generateBeltAnchor({ slices, widget, process, lineWidth, sliceHe
                 }
             }
         }
+    }
+}
+
+/**
+ * Generate the belt prime strip and, when the part does not touch the belt
+ * (pedestal / supported prints), the anchor tab that joins it to the print.
+ *
+ * Runs after supports exist. The first printed lines become a flat sheet on the
+ * belt: [ wide prime strip ][ anchor tab ][ support base / part brim ]. The strip
+ * replaces purge lines in the start gcode and prints as part of the brim.
+ *
+ * Settings: beltPrimeLines (count), beltPrimeWidth (mm, centered),
+ * and the existing part anchor length (beltAnchor / firstLayerBeltLead).
+ */
+export function generateBeltPrime({ slices, widget, process, lineWidth, sliceHeight, extruder, bedWidth }) {
+    let primeLines = process.beltPrimeLines || 0;
+    let primeWidth = process.beltPrimeWidth || 0;
+    if (!(primeLines > 0 && primeWidth > 0) || !slices.length) {
+        return;
+    }
+    let { belt } = widget;
+    let { cosf, slope } = belt;
+    if (bedWidth) primeWidth = Math.min(primeWidth, bedWidth);
+
+    // anchor lines made before supports existed may overlap support layers
+    // (pedestal prints). drop them so the anchor can be rebuilt as its own
+    // tab in front of the support base: [prime][anchor][support base / part]
+    let recorded = (belt.anchor && belt.anchor.tops) || [];
+    let merged = recorded.some(r => (r.slice.supports || []).some(p => p.fill && p.fill.length));
+    if (merged) {
+        for (let r of recorded) {
+            r.slice.tops = r.slice.tops.filter(t => t !== r.top);
+            if (r.slice.belt) r.slice.belt.anchor = false;
+        }
+    }
+    let anchored = !merged && recorded.length > 0;
+
+    // a slice counts only if it will actually print something
+    let hasContent = s =>
+        (s.tops || []).some(t => (t.shells && t.shells.length) || (t.fill_sparse && t.fill_sparse.length) || (t.fill_lines && t.fill_lines.length) || (t.traces && t.traces.length)) ||
+        (s.supports || []).some(p => p.fill && p.fill.length);
+    let lowest = slices.find(hasContent);
+    if (!lowest) {
+        return;
+    }
+    let supported = (lowest.supports || []).some(p => p.fill && p.fill.length);
+
+    // x extent of the first few content layers (tops and supports) plus brim
+    let minx = Infinity, maxx = -Infinity, peek = 0;
+    for (let s of slices) {
+        if (!hasContent(s) || peek++ >= BELT.PEEK_LAYERS) continue;
+        for (let poly of s.topPolys()) {
+            minx = Math.min(minx, poly.bounds.minx);
+            maxx = Math.max(maxx, poly.bounds.maxx);
+        }
+        for (let poly of s.supports || []) {
+            minx = Math.min(minx, poly.bounds.minx);
+            maxx = Math.max(maxx, poly.bounds.maxx);
+        }
+    }
+    if (!Number.isFinite(minx)) {
+        return;
+    }
+    let brim = getRangeParameters(process, 0).firstLayerBrim || 0;
+    minx -= Math.abs(brim);
+    maxx += Math.abs(brim);
+
+    // distance of the part from the belt plane; supports sit on the plane
+    let smin = Infinity;
+    for (let s of slices) {
+        if (s.belt && s.belt.miny < smin) smin = s.belt.miny;
+    }
+    if (supported || !Number.isFinite(smin)) smin = 0;
+
+    let step = sliceHeight;
+    let anchorlen = (process.beltAnchor || process.firstLayerBeltLead) * cosf;
+    let tabLines = anchored ? 0 : Math.floor(anchorlen / (step * slope));
+    let cur = lowest;
+    let lines = tabLines + primeLines;
+    for (let i = 0; i < lines; i++) {
+        let addto = cur.down;
+        if (!addto) {
+            addto = newSlice(cur.z - step);
+            addto.extruder = extruder;
+            addto.belt = { };
+            addto.height = cur.height;
+            addto.up = cur;
+            cur.down = addto;
+            slices.splice(0, 0, addto);
+        } else if (!addto.belt) {
+            addto.belt = { };
+        }
+        addto.index = -1;
+        addto.belt.anchor = true;
+        addto.belt.touch = false;
+        let isPrime = i >= tabLines;
+        let z = addto.z;
+        let y = (slope * z) - smin - (lineWidth / 2);
+        let x0 = isPrime ? Math.min(minx, -primeWidth / 2) : minx;
+        let x1 = isPrime ? Math.max(maxx, primeWidth / 2) : maxx;
+        let splat = newPolygon().add(x0, y, z).add(x1, y, z).setOpen();
+        addto.addTop(splat).fill_sparse = [ splat ];
+        cur = addto;
     }
 }
 
