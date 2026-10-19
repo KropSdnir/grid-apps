@@ -789,7 +789,14 @@ export function sliceOne(settings, widget, onupdate, ondone) {
                     let skewy = slice.z * belt.slope;
                     let rect = newPolygon().centerRectangle(
                         newPoint((bx0 + bx1) / 2, skewy - plate / 2, slice.z), bx1 - bx0, plate);
-                    slice.supports = POLY.union([ ...(slice.supports || []), rect ], 0, true);
+                    // the plate is its own polygon, filled solid; the fins are trimmed
+                    // so nothing is printed twice
+                    let rest = [];
+                    if ((slice.supports || []).length) {
+                        POLY.subtract(slice.supports, [ rect ], rest, null, slice.z, minArea, { wasm: false });
+                    }
+                    rect.solidPlate = true;
+                    slice.supports = POLY.setZ([ ...rest, rect ], slice.z);
                 }
             }
         }
@@ -1901,6 +1908,8 @@ function supportPolyFill({ promises, polys, lineWidth, density, z, isBelt, angle
     // calculate fill spacing: an explicit open gap between lines (mm) wins over density
     let spacing = spacingGap > 0 ? lineWidth + spacingGap : lineWidth * (1 / density);
     for (let poly of polys) {
+        // base plate polygons print solid (adjacent lines, no gaps)
+        let polySpacing = poly.solidPlate ? lineWidth * 0.9 : (tieLayer ? Math.max(spacing, tieSpacing) : spacing);
         // calculate angle based on width/height ratio
         let auto = isBelt || (poly.bounds.width() / poly.bounds.height() > 1) ?
             CONSTANTS.SUPPORT_AUTO_ANGLE_WIDE :
@@ -1910,14 +1919,14 @@ function supportPolyFill({ promises, polys, lineWidth, density, z, isBelt, angle
         // do the fill
         if (inset && inset.length > 0) {
             areaFill({
-                angle: tieLayer ? CONSTANTS.SUPPORT_AUTO_ANGLE_TALL : (angle || auto),
+                angle: tieLayer && !poly.solidPlate ? CONSTANTS.SUPPORT_AUTO_ANGLE_TALL : (angle || auto),
                 output: poly.fill = [],
                 polys: inset,
                 promises,
                 // tie layers use a wide, sparse spacing so only a few cross lines are drawn
-                spacing: tieLayer ? Math.max(spacing, tieSpacing) : spacing,
+                spacing: polySpacing,
                 // drop fill lines shorter than this (mm): removes scraps at polygon edges
-                minLen: minLine > 0 && !tieLayer ? minLine : undefined
+                minLen: minLine > 0 && !tieLayer && !poly.solidPlate ? minLine : undefined
             });
             if (!outline && poly.fill.length) {
                 let ok = p => p && Number.isFinite(p.x) && Number.isFinite(p.y);
