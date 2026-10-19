@@ -494,6 +494,8 @@ self.lang['en-us'] = {
     sp_span_l:      ["unsupported span that causes","a new support to be generated","in millimeters"],
     sp_angl_s:      "angle",
     sp_angl_l:      ["max overhang angle before","supporting pillar is generated","normal values 45-60","belt values 0-10"],
+    sp_spac_s:      "spacing",
+    sp_spac_l:      ["open gap between support lines","in millimeters. overrides density","when greater than 0"],
     sp_vert_s:      "vertical",
     sp_vert_l:      ["belt printers: 0 = off","+/-1 sweep supports straight down","+/-2 project supports straight down"],
     sp_base_s:      "pedestal base",

@@ -918,6 +918,7 @@ export function sliceOne(settings, widget, onupdate, ondone) {
             layerSupportFill({
                 angle: process.sliceSupportFill,
                 density,
+                spacingGap: params.sliceSupportSpacing || process.sliceSupportSpacing || 0,
                 isBelt,
                 lineWidth,
                 outline: process.sliceSupportOutline !== false,
@@ -1796,7 +1797,7 @@ function areaFill({ promises: fillQ, polys, angle, spacing, output, minLen, maxL
  * @see CONSTANTS.SUPPORT_AUTO_ANGLE_TALL - Auto angle for tall polygons (1000 = 0°)
  * @see CONSTANTS.SUPPORT_CONNECT_DISTANCE_MULT - Distance multiplier for line connection (2x)
  */
-function layerSupportFill({ promises, slice, lineWidth, density, isBelt, angle, outline, gap }) {
+function layerSupportFill({ promises, slice, lineWidth, density, isBelt, angle, outline, gap, spacingGap }) {
     let polys = slice.supports;
     if (polys) {
         supportPolyFill({
@@ -1807,6 +1808,7 @@ function layerSupportFill({ promises, slice, lineWidth, density, isBelt, angle, 
             outline,
             polys,
             promises,
+            spacingGap,
             z: slice.z
         });
     }
@@ -1854,9 +1856,9 @@ function layerSupportFill({ promises, slice, lineWidth, density, isBelt, angle, 
  * @see CONSTANTS.SUPPORT_INSET_RATIO - Inset ratio for fill area (1/3)
  * @see CONSTANTS.SUPPORT_CONNECT_DISTANCE_MULT - Distance multiplier for line connection (2x)
  */
-function supportPolyFill({ promises, polys, lineWidth, density, z, isBelt, angle, outline }) {
-    // calculate fill density
-    let spacing = lineWidth * (1 / density);
+function supportPolyFill({ promises, polys, lineWidth, density, z, isBelt, angle, outline, spacingGap }) {
+    // calculate fill spacing: an explicit open gap between lines (mm) wins over density
+    let spacing = spacingGap > 0 ? lineWidth + spacingGap : lineWidth * (1 / density);
     for (let poly of polys) {
         // calculate angle based on width/height ratio
         let auto = isBelt || (poly.bounds.width() / poly.bounds.height() > 1) ?
