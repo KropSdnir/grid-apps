@@ -684,7 +684,8 @@ export function sliceOne(settings, widget, onupdate, ondone) {
                 let thin = [];
                 POLY.subtract(polys, core, thin, null, slice.z, 0, { wasm: true });
                 let grown = thin.length ? (POLY.offset(thin, minW / 2, o) || []) : [];
-                let merged = POLY.union([ ...core, ...grown ], 0, true);
+                let merged = POLY.union([ ...core, ...grown ], minArea, true)
+                    .filter(p => p.points.length >= 3 && Math.abs(p.area()) > minArea);
                 // belt: never grow past the belt plane
                 if (belt) {
                     let boundsx = bounds.dim.x * 1.1;
@@ -695,7 +696,9 @@ export function sliceOne(settings, widget, onupdate, ondone) {
                         .move({ x: 0, y: -boundsy / 2 + skewy, z: 0 });
                     merged = POLY.trimTo(merged, [ clip ]);
                 }
-                slice.supports = merged;
+                slice.supports = POLY.setZ(merged, slice.z);
+                // clear cached bounds so later steps recompute them from the points
+                for (let q of slice.supports) q._bounds = undefined;
             }
         }
 
@@ -1917,7 +1920,10 @@ function supportPolyFill({ promises, polys, lineWidth, density, z, isBelt, angle
                 minLen: minLine > 0 && !tieLayer ? minLine : undefined
             });
             if (!outline && poly.fill.length) {
-                poly.fill = connect_lines(poly.fill, spacing * CONSTANTS.SUPPORT_CONNECT_DISTANCE_MULT);
+                let ok = p => p && Number.isFinite(p.x) && Number.isFinite(p.y);
+                let joined = connect_lines(poly.fill, spacing * CONSTANTS.SUPPORT_CONNECT_DISTANCE_MULT);
+                // keep the unconnected lines if joining produced invalid points
+                poly.fill = joined.every(ok) ? joined : poly.fill.filter(ok);
             }
         }
     }

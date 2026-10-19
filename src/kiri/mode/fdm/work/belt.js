@@ -229,12 +229,18 @@ export function generateBeltPrime({ slices, widget, process, lineWidth, sliceHei
     for (let s of slices) {
         if (!hasContent(s) || peek++ >= BELT.PEEK_LAYERS) continue;
         for (let poly of s.topPolys()) {
-            minx = Math.min(minx, poly.bounds.minx);
-            maxx = Math.max(maxx, poly.bounds.maxx);
+            let { minx: bx0, maxx: bx1 } = poly.bounds;
+            if (Number.isFinite(bx0) && Number.isFinite(bx1)) {
+                minx = Math.min(minx, bx0);
+                maxx = Math.max(maxx, bx1);
+            }
         }
         for (let poly of s.supports || []) {
-            minx = Math.min(minx, poly.bounds.minx);
-            maxx = Math.max(maxx, poly.bounds.maxx);
+            let { minx: bx0, maxx: bx1 } = poly.bounds;
+            if (Number.isFinite(bx0) && Number.isFinite(bx1)) {
+                minx = Math.min(minx, bx0);
+                maxx = Math.max(maxx, bx1);
+            }
         }
     }
     if (!Number.isFinite(minx)) {
