@@ -123,6 +123,8 @@ export function menu() {
     sliceSupportDensity: newInput(LANG.sp_dens_s, {title:LANG.sp_dens_l, convert:toFloat, bound:bound(0.0,1.0)}),
     sliceSupportOffset:  newInput(LANG.sp_offs_s, {title:LANG.sp_offs_l, convert:toFloat, bound:bound(0.0,200.0)}),
     sliceSupportExtra:   newInput(LANG.sp_xpnd_s, {title:LANG.sp_xpnd_l, convert:toFloat, bound:bound(0.0,10.0)}),
+    sliceSupportVertical:newInput(LANG.sp_vert_s, {title:LANG.sp_vert_l, convert:toInt,   bound:bound(-2,2), show:isBelt}),
+    sliceSupportMinArea: newInput(LANG.sp_mina_s, {title:LANG.sp_mina_l, convert:toFloat, bound:bound(0,2000)}),
     // sliceSupportSpan:    newInput(LANG.sp_span_s, {title:LANG.sp_span_l, convert:toFloat, bound:bound(0.0,200.0), show:() => ui.sliceSupportEnable.checked }),
     separator:           newBlank({ class:"set-sep", driven }),
     sliceSupportOutline: newBoolean(LANG.sp_outl_s, onBooleanClick, {title:LANG.sp_outl_l, xshow: () => !isTree() }),

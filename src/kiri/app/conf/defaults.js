@@ -354,6 +354,8 @@ export const conf = {
                 sliceSupportOffset: 1.0,
                 sliceSupportOutline: true,
                 // sliceSupportSpan: 5,
+                sliceSupportMinArea: 0,
+                sliceSupportVertical: 0,
                 sliceSupportType: "disabled",
                 sliceSupportTree: false,
                 sliceTopLayers: 3,

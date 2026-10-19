@@ -186,12 +186,20 @@ export function generateBeltAnchor({ slices, widget, process, lineWidth, sliceHe
 export function generateBeltPrime({ slices, widget, process, lineWidth, sliceHeight, extruder, bedWidth }) {
     let primeLines = process.beltPrimeLines || 0;
     let primeWidth = process.beltPrimeWidth || 0;
-    if (!(primeLines > 0 && primeWidth > 0) || !slices.length) {
+    if (!slices.length) {
         return;
+    }
+    if (!(primeLines > 0 && primeWidth > 0)) {
+        primeLines = 0;
     }
     let { belt } = widget;
     let { cosf, slope } = belt;
     if (bedWidth) primeWidth = Math.min(primeWidth, bedWidth);
+
+    // with several models only the first printed one carries the prime strip;
+    // the rest keep their normal part anchor
+    let primeHere = belt.primeFirst !== false;
+    if (!primeHere) primeLines = 0;
 
     // anchor lines made before supports existed may overlap support layers
     // (pedestal prints). drop them so the anchor can be rebuilt as its own

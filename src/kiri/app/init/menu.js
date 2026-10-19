@@ -143,6 +143,7 @@ function content(actions) {
                     menuItem(actions, { id: 'context-lefty', lk: 'face_left', text: 'face left', iconClass: 'fas fa-angle-double-left' }),
                     hr(),
                     menuItem(actions, { id: 'context-mirror', lk: 'rc_mirr', text: 'mirror', iconClass: 'fas fa-arrows-left-right-to-line' }),
+                    menuItem(actions, { id: 'context-pedestal', lk: 'rc_pedl', text: 'pedestal (belt)', iconClass: 'fas fa-caret-up' }),
                     menuItem(actions, { id: 'context-duplicate', lk: 'rc_dupl', text: 'duplicate', iconClass: 'fas fa-copy' }),
                     hr(),
                     menuItem(actions, { id: 'context-rotate-panel', text: 'rotate', iconClass: 'fas fa-rotate-right' }),

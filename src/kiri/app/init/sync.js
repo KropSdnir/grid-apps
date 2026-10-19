@@ -409,6 +409,35 @@ function setup_keybd_nav() {
     $('mesh-split').onclick = selection.isolateBodies;
     $('context-duplicate').onclick = selection.duplicate;
     $('context-mirror').onclick = selection.mirror;
+    // belt printers: tilt models 45 degrees onto a pedestal of straight-down supports.
+    // toggles; acts on the selection, or on every model when nothing is selected
+    $('context-pedestal').onclick = () => {
+        if (!api.device.isBelt()) {
+            return api.show.alert('pedestal needs a belt printer', 3);
+        }
+        api.view.set_arrange();
+        if (selection.count() === 0) {
+            platform.select_all();
+        }
+        let targets = selection.widgets();
+        if (!targets.length) {
+            return;
+        }
+        let on = !targets.every(w => w.meta && w.meta.pedestal);
+        selection.rotate((on ? -45 : 45) * Math.PI / 180, 0, 0);
+        for (let w of targets) {
+            w.meta = w.meta || {};
+            w.meta.pedestal = on;
+        }
+        if (on) {
+            // supports the pedestal needs: automatic, straight-down projection
+            let setf = (k, v) => { let el = ui[k]; if (el) { el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })); } };
+            if (ui.sliceSupportType.value === 'disabled') setf('sliceSupportType', 'automatic');
+            setf('sliceSupportVertical', 2);
+            api.conf.update();
+        }
+        api.show.alert(`pedestal ${on ? 'on' : 'off'} for ${targets.length} model${targets.length === 1 ? '' : 's'}`, 3);
+    };
     $('context-rotate-panel').onclick = () => toggleSelectionPanel('panel-rotate');
     $('context-scale-panel').onclick = () => toggleSelectionPanel('panel-scale');
     $('panel-rotate-close').onmousedown = (ev) => { ev.stopPropagation(); };

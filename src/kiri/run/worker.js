@@ -415,7 +415,19 @@ const dispatch = {
             return minv;
         }
 
-        for (let group of Object.values(wgroup)) {
+        // the group nearest the belt start prints first and alone gets the prime strip
+        let groups = Object.values(wgroup);
+        let firstGroup = null, firstY = Infinity;
+        for (let group of groups) {
+            let { miny } = gmin(group);
+            let yp = group[0].track.pos.y + miny;
+            if (yp < firstY) {
+                firstY = yp;
+                firstGroup = group;
+            }
+        }
+
+        for (let group of groups) {
             let { miny, maxy } = gmin(group);
             let widget = group[0];
             let proc = settings.process;
@@ -443,7 +455,9 @@ const dispatch = {
                 cosf: Math.cos(radians * angle), // Y comp
                 sinf: Math.sin(radians * angle), // Z comp
                 // slope for calculating z = 0 from angle bias
-                slope: Math.tan(radians * (90 - angle))
+                slope: Math.tan(radians * (90 - angle)),
+                // only the first printed model gets the prime strip
+                primeFirst: group === firstGroup
             };
             for (let others of group.slice(1)) {
                 others.belt = widget.belt;
