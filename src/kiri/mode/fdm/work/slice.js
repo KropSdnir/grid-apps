@@ -780,7 +780,7 @@ export function sliceOne(settings, widget, onupdate, ondone) {
                 }
             }
             if (touching.length) {
-                let margin = lineWidth * 2;
+                let margin = process.beltPedestalMargin || 0;
                 bx0 -= margin;
                 bx1 += margin;
                 let zmin = touching[0].z, zmax = touching[touching.length - 1].z;
@@ -961,6 +961,7 @@ export function sliceOne(settings, widget, onupdate, ondone) {
                 angle: process.sliceSupportFill,
                 density,
                 spacingGap: params.sliceSupportSpacing || process.sliceSupportSpacing || 0,
+                edge: params.sliceSupportEdge || process.sliceSupportEdge || false,
                 minLine: params.sliceSupportMinLine || process.sliceSupportMinLine || 0,
                 tie: params.sliceSupportTie || process.sliceSupportTie || 0,
                 isBelt,
@@ -1841,7 +1842,7 @@ function areaFill({ promises: fillQ, polys, angle, spacing, output, minLen, maxL
  * @see CONSTANTS.SUPPORT_AUTO_ANGLE_TALL - Auto angle for tall polygons (1000 = 0°)
  * @see CONSTANTS.SUPPORT_CONNECT_DISTANCE_MULT - Distance multiplier for line connection (2x)
  */
-function layerSupportFill({ promises, slice, lineWidth, density, isBelt, angle, outline, gap, spacingGap, minLine, tie }) {
+function layerSupportFill({ promises, slice, lineWidth, density, isBelt, angle, outline, gap, spacingGap, minLine, tie, edge }) {
     let polys = slice.supports;
     if (polys) {
         supportPolyFill({
@@ -1854,6 +1855,7 @@ function layerSupportFill({ promises, slice, lineWidth, density, isBelt, angle, 
             promises,
             spacingGap,
             minLine,
+            edge,
             // every Nth layer prints cross lines (0 degrees) that tie the fins together
             tieLayer: tie > 0 && slice.index >= 0 && slice.index % tie === 0,
             tieSpacing: CONSTANTS.SUPPORT_TIE_SPACING,
@@ -1904,7 +1906,7 @@ function layerSupportFill({ promises, slice, lineWidth, density, isBelt, angle, 
  * @see CONSTANTS.SUPPORT_INSET_RATIO - Inset ratio for fill area (1/3)
  * @see CONSTANTS.SUPPORT_CONNECT_DISTANCE_MULT - Distance multiplier for line connection (2x)
  */
-function supportPolyFill({ promises, polys, lineWidth, density, z, isBelt, angle, outline, spacingGap, minLine, tieLayer, tieSpacing }) {
+function supportPolyFill({ promises, polys, lineWidth, density, z, isBelt, angle, outline, spacingGap, minLine, tieLayer, tieSpacing, edge }) {
     // calculate fill spacing: an explicit open gap between lines (mm) wins over density
     let spacing = spacingGap > 0 ? lineWidth + spacingGap : lineWidth * (1 / density);
     for (let poly of polys) {
@@ -1928,6 +1930,34 @@ function supportPolyFill({ promises, polys, lineWidth, density, z, isBelt, angle
                 // drop fill lines shorter than this (mm): removes scraps at polygon edges
                 minLen: minLine > 0 && !tieLayer && !poly.solidPlate ? minLine : undefined
             });
+            // edge fins: one fill line flush with each side of the region, so the
+            // outermost column sits on the support edge instead of up to a grid
+            // step inside it. started from the polygon bounds, not the global grid
+            if (edge && !poly.solidPlate && !tieLayer && !promises && isBelt) {
+                let shrink = lineWidth * 0.3;
+                for (let ip of inset) {
+                    for (let ang of [ 90, -90 ]) {
+                        let b = ip.bounds.clone();
+                        if (ang > 0) b.maxx -= shrink; else b.minx += shrink;
+                        let saved = ip._bounds;
+                        ip._bounds = b;
+                        let extra = [];
+                        areaFill({
+                            angle: ang,
+                            output: extra,
+                            polys: [ ip ],
+                            // wider than the region: exactly one scan line, at the start edge
+                            spacing: b.width() * 2 + 10,
+                            minLen: minLine > 0 ? minLine : undefined
+                        });
+                        ip._bounds = saved;
+                        // keep only complete lines (point pairs)
+                        for (let i = 0; i + 1 < extra.length; i += 2) {
+                            poly.fill.push(extra[i], extra[i + 1]);
+                        }
+                    }
+                }
+            }
             if (!outline && poly.fill.length) {
                 let ok = p => p && Number.isFinite(p.x) && Number.isFinite(p.y);
                 let joined = connect_lines(poly.fill, spacing * CONSTANTS.SUPPORT_CONNECT_DISTANCE_MULT);
