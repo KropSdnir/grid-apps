@@ -253,6 +253,10 @@ function modeTools(actions) {
         span({ id: 'act-print', ...on(actions, 'act-print') }, [
             span([icon('fas fa-print')]),
             label({ id: 'label-print', title: 'slice, upload and print on the printer', lk: 'qprint', _: t('qprint', 'print') })
+        ]),
+        span({ id: 'act-queue', ...on(actions, 'act-queue') }, [
+            span([icon('fas fa-list')]),
+            label({ id: 'label-queue', title: 'slice, upload and add to the printer queue (does not start)', lk: 'qqueue', _: t('qqueue', 'queue') })
         ])
     ];
 }

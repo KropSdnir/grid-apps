@@ -47,6 +47,20 @@ function normHost(host) {
  * starting unless local setting 'print-confirm' is 'off'.
  */
 export function quickPrint() {
+    quickSend('print');
+}
+
+/**
+ * One-click queue: same as print, but the file is only uploaded and added to the
+ * printer's job queue (Moonraker). Nothing starts or moves; no confirmation.
+ * The queue runs when it is started from the printer's web interface.
+ */
+export function quickQueue() {
+    quickSend('queue');
+}
+
+function quickSend(mode) {
+    const queue = mode === 'queue';
     if (api.mode.get_id() !== MODES.FDM) {
         api.show.alert('one-click print is for FDM mode');
         return;
@@ -60,6 +74,10 @@ export function quickPrint() {
     }
     const type = localGet('octo-type') || 'moonraker';
     const apik = localGet('octo-apik') || '';
+    if (queue && type !== 'moonraker') {
+        api.show.alert('queue needs a Klipper (Moonraker) printer');
+        return;
+    }
     if (api.const.SECURE && host.startsWith('http:')) {
         api.show.alert("printer address must begin with 'https' on a secure site");
         return;
@@ -69,13 +87,13 @@ export function quickPrint() {
         const base = (api.widgets.all().map(w => w.meta && w.meta.file).filter(v => v)[0] || 'print')
             .replace(/\.[^.]*$/, '').replace(/[^\w.-]+/g, '-').substring(0, 30);
         const filename = `${base}-${stamp}.gcode`;
-        if (localGet('print-confirm') !== 'off' &&
+        if (!queue && localGet('print-confirm') !== 'off' &&
             !window.confirm(`Upload ${filename} and START PRINTING on ${host}?`)) {
             return;
         }
         const form = new FormData();
         form.append('file', new Blob([gcode + '\r\n'], { type: 'application/octet-stream' }), filename);
-        form.append('print', 'true');
+        if (!queue) form.append('print', 'true');
         const url = host + (type === 'moonraker' ? '/server/files/upload' : '/api/files/local');
         const headers = apik ? { 'X-Api-Key': apik } : {};
         api.show.progress(0.5, 'sending to printer');
@@ -83,11 +101,24 @@ export function quickPrint() {
             .then(async r => {
                 api.show.progress(0);
                 if (!r.ok) throw new Error(`${r.status} ${(await r.text()).slice(0, 200)}`);
-                api.show.alert(`printing ${filename}`, 5);
+                if (!queue) {
+                    api.show.alert(`printing ${filename}`, 5);
+                    return;
+                }
+                // add the uploaded file to the printer's job queue
+                const q = await fetch(host + '/server/job_queue/job', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...headers },
+                    body: JSON.stringify({ filenames: [ filename ] })
+                });
+                if (!q.ok) throw new Error(`queue ${q.status} ${(await q.text()).slice(0, 200)}`);
+                const st = (await q.json()).result || {};
+                const n = (st.queued_jobs || []).length;
+                api.show.alert(`queued ${filename} (${n} in queue, queue ${st.queue_state || 'unknown'})`, 8);
             })
             .catch(err => {
                 api.show.progress(0);
-                api.show.alert(`print failed: ${err.message}`, 8);
+                api.show.alert(`${queue ? 'queue' : 'print'} failed: ${err.message}`, 8);
             });
     });
 }

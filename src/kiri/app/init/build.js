@@ -16,7 +16,8 @@ const surfaces = {
             'act-preview': stop(() => api.function.print()),
             'act-animate': stop(() => api.function.animate()),
             'act-export': stop(() => api.function.export()),
-            'act-print': stop(() => api.function.quickprint())
+            'act-print': stop(() => api.function.quickprint()),
+            'act-queue': stop(() => api.function.quickqueue())
         });
     }
 };
