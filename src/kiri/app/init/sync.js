@@ -4,6 +4,7 @@ import { $ } from '../../../moto/webui.js';
 import { api } from '../api.js';
 import { beta, version } from '../../../moto/license.js';
 import { fileOps } from '../file-ops.js';
+import { jobinfo } from '../jobinfo.js';
 import { local as sdb } from '../../../data/local.js';
 import { preferences } from '../preferences.js';
 import { settings as set_ctrl } from '../conf/manager.js';
@@ -355,6 +356,7 @@ function setup_keybd_nav() {
     $('file-recent').onclick = () => { api.modal.show('files') };
     $('file-import').onclick = (ev) => { api.event.import(ev); };
     $('view-top').onclick = space.view.top;
+    jobinfo.init();
     $('view-home').onclick = space.view.home;
 
     $('unrotate').onclick = () => {
