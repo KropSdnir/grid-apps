@@ -25,6 +25,74 @@ function localSet(key, val) {
 }
 
 /**
+ * Reduce whatever was typed or pasted (a Fluidd/Mainsail page address with a
+ * path, query or hash) to the bare printer address, e.g. http://192.168.1.8
+ * @param {string} host
+ * @returns {string} origin, or '' when empty
+ */
+function normHost(host) {
+    host = (host || '').trim();
+    if (!host) return '';
+    try {
+        return new URL(host.includes('://') ? host : 'http://' + host).origin;
+    } catch (e) {
+        return host.toLowerCase();
+    }
+}
+
+/**
+ * One-click print: slice/prepare if needed, generate gcode, upload it to the
+ * saved Klipper (Moonraker) or OctoPrint host and start the print in the same
+ * request. Asks for the printer address the first time. Asks to confirm before
+ * starting unless local setting 'print-confirm' is 'off'.
+ */
+export function quickPrint() {
+    if (api.mode.get_id() !== MODES.FDM) {
+        api.show.alert('one-click print is for FDM mode');
+        return;
+    }
+    let host = normHost(localGet('octo-host'));
+    if (!host) {
+        host = normHost(window.prompt('Printer address (for example http://192.168.1.8)'));
+        if (!host) return;
+        localSet('octo-host', host);
+        if (!localGet('octo-type')) localSet('octo-type', 'moonraker');
+    }
+    const type = localGet('octo-type') || 'moonraker';
+    const apik = localGet('octo-apik') || '';
+    if (api.const.SECURE && host.startsWith('http:')) {
+        api.show.alert("printer address must begin with 'https' on a secure site");
+        return;
+    }
+    api.function.export((gcode, info) => {
+        const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(2, 12);
+        const base = (api.widgets.all().map(w => w.meta && w.meta.file).filter(v => v)[0] || 'print')
+            .replace(/\.[^.]*$/, '').replace(/[^\w.-]+/g, '-').substring(0, 30);
+        const filename = `${base}-${stamp}.gcode`;
+        if (localGet('print-confirm') !== 'off' &&
+            !window.confirm(`Upload ${filename} and START PRINTING on ${host}?`)) {
+            return;
+        }
+        const form = new FormData();
+        form.append('file', new Blob([gcode + '\r\n'], { type: 'application/octet-stream' }), filename);
+        form.append('print', 'true');
+        const url = host + (type === 'moonraker' ? '/server/files/upload' : '/api/files/local');
+        const headers = apik ? { 'X-Api-Key': apik } : {};
+        api.show.progress(0.5, 'sending to printer');
+        fetch(url, { method: 'POST', headers, body: form })
+            .then(async r => {
+                api.show.progress(0);
+                if (!r.ok) throw new Error(`${r.status} ${(await r.text()).slice(0, 200)}`);
+                api.show.alert(`printing ${filename}`, 5);
+            })
+            .catch(err => {
+                api.show.progress(0);
+                api.show.alert(`print failed: ${err.message}`, 8);
+            });
+    });
+}
+
+/**
  * Main export entry point. Dispatches to mode-specific export handlers.
  * Extracts widget filenames to use for export filename suggestions.
  * @param {object} options - Export options (mode-specific)
@@ -245,7 +313,7 @@ function exportGCodeDialog(gcode, sections, info, names) {
 
         let form = new FormData(),
             ajax = new XMLHttpRequest(),
-            host = octo_host.value.toLowerCase(),
+            host = normHost(octo_host.value),
             apik = octo_apik.value,
             type = octo_type.value,
             targetLocal = !api.util.isSecure(host),
@@ -272,6 +340,8 @@ function exportGCodeDialog(gcode, sections, info, names) {
 
         filename = $('print-filename').value + "." + fileext;
         form.append("file", getBlob(), filename);
+        // start the print in the same request so it only starts after a good upload
+        if (start) form.append("print", "true");
         ajax.onreadystatechange = function() {
             console.log({ ajax_readyState: ajax.readyState });
             if (ajax.readyState === 4) {
@@ -283,19 +353,6 @@ function exportGCodeDialog(gcode, sections, info, names) {
                     api.show.alert("send error\nstatus: "+status+"\nmessage: "+ajax.responseText);
                 }
                 api.show.progress(0);
-                if (start && type === 'moonraker') {
-                    const headers = { 'Content-Type': 'application/json' };
-                    if (proxy) hdr['X-Host'] = proxy;
-                    if (apik) hdr['X-Api-Key'] = apik;
-                    fetch(`${host}/printer/print/start`, {
-                        method: 'POST',
-                        headers,
-                        body: JSON.stringify({ filename })
-                    })
-                    .then(r => r.json())
-                    .then(data => console.log('print start', data))
-                    .catch(err => console.error('print start error', err))
-                }
             }
             api.show.progress(0);
         };

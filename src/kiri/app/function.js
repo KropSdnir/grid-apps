@@ -6,7 +6,7 @@ import { codec } from '../core/codec.js';
 import { space } from '../../moto/space.js';
 import { PMODES } from './consts.js';
 import { colorSchemeRegistry } from './color/schemes.js';
-import { exportFile } from './export.js';
+import { exportFile, quickPrint } from './export.js';
 
 /**
  * Get current color scheme
@@ -572,6 +572,7 @@ export const functions = {
     prepare: preparePreview,
     animate: prepareAnimation,
     export: prepareExport,
+    quickprint: quickPrint,
     cancel: cancelWorker,
     parse: parseCode,
     clear: client.clear,
@@ -584,6 +585,7 @@ export {
     preparePreview as prepare,
     prepareAnimation as animate,
     prepareExport as export,
+    quickPrint as quickprint,
     cancelWorker as cancel,
     parseCode as parse,
     clear_progress,

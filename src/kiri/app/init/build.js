@@ -15,7 +15,8 @@ const surfaces = {
             'act-slice': stop(() => api.function.slice()),
             'act-preview': stop(() => api.function.print()),
             'act-animate': stop(() => api.function.animate()),
-            'act-export': stop(() => api.function.export())
+            'act-export': stop(() => api.function.export()),
+            'act-print': stop(() => api.function.quickprint())
         });
     }
 };

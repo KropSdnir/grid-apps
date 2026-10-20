@@ -249,6 +249,10 @@ function modeTools(actions) {
         span({ id: 'act-export', ...on(actions, 'act-export') }, [
             span([icon('fas fa-file-download')]),
             label({ id: 'label-export', title: 'generate gcode', lk: 'export', _: t('export', 'export') })
+        ]),
+        span({ id: 'act-print', ...on(actions, 'act-print') }, [
+            span([icon('fas fa-print')]),
+            label({ id: 'label-print', title: 'slice, upload and print on the printer', lk: 'qprint', _: t('qprint', 'print') })
         ])
     ];
 }
