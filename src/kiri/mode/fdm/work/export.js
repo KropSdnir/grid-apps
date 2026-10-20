@@ -154,6 +154,16 @@ export function fdm_export(print, online, ondone, ondebug) {
         }
     }
 
+    // belt: leading prime-strip and part-anchor layers are not part layers. the
+    // "fan on layer" setting counts from the first real part layer
+    let anchorLayers = 0;
+    if (isBelt) {
+        for (const l of layers) {
+            if (l.slice && l.slice.belt && l.slice.belt.anchor) anchorLayers++;
+            else break;
+        }
+    }
+
     // smallish band-aid. refactor above to remove redundancy
     function updateParams(layer, params) {
         if (!params) params = getRangeParameters(process, layer);
@@ -168,7 +178,7 @@ export function fdm_export(print, online, ondone, ondebug) {
             params.firstLayerBedTemp || params.outputBedTemp :
             params.outputBedTemp || params.firstLayerBedTemp;
         fanSpeedBase = params.firstLayerFanSpeed || 0;
-        fanSpeed = layer >= (params.outputFanLayer ?? 1) ?
+        fanSpeed = (layer - anchorLayers) >= (params.outputFanLayer ?? 1) ?
             params.outputFanSpeed || 0 : fanSpeedBase;
         Object.assign(subst, {
             temp_bed: bedTemp,
@@ -524,8 +534,8 @@ export function fdm_export(print, online, ondone, ondebug) {
         }
         // belt prime strip and part anchor lines print with the fan off
         // (adhesion first) unless "anchor fan" is turned on
-        if (isBelt && path.slice && path.slice.belt && path.slice.belt.anchor && !process.beltAnchorFan) {
-            fanSpeed = fanSpeedBase;
+        if (isBelt && path.slice && path.slice.belt && path.slice.belt.anchor) {
+            fanSpeed = process.beltAnchorFan ? (process.outputFanSpeed || 0) : fanSpeedBase;
             subst.fan_speed = fanSpeed;
         }
 

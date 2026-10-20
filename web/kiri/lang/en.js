@@ -840,7 +840,7 @@ self.lang['en-us'] = {
     ou_spml_s:      "infill factor",
     ou_exml_l:      ["extrusion multiplier","0.0 - 2.0"],
     ou_fanl_s:      "fan on layer",
-    ou_fanl_l:      ["layer # to turn on fan","layers start at 0"],
+    ou_fanl_l:      ["layer # to turn on fan","layers start at 0. on belt printers","counted from the first part layer,","after the prime lines and anchor"],
     ou_fans_s:      "fan on speed",
     ou_fans_l:      "0 - 255",
     ou_layt_s:      "min layer time",
