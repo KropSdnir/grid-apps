@@ -162,6 +162,7 @@ export function menu() {
     separator:           newBlank({ class:"set-sep", driven, show:isBelt }),
     firstLayerBeltLead:  newInput(LANG.fl_bled_s, {title:LANG.fl_bled_l, convert:toFloat, show:isBelt}),
     firstLayerBeltBump:  newInput(LANG.fl_blmp_s, {title:LANG.fl_blmp_l, convert:toFloat, bound:bound(0, 10), show:isBelt}),
+    beltAnchorFan:       newBoolean(LANG.fl_bafn_s, onBooleanClick, {title:LANG.fl_bafn_l, show:isBelt}),
     beltPrimeLines:      newInput(LANG.fl_bprl_s, {title:LANG.fl_bprl_l, convert:toInt,   bound:bound(0, 10), show:isBelt}),
     beltPrimeWidth:      newInput(LANG.fl_bprw_s, {title:LANG.fl_bprw_l, convert:toFloat, bound:bound(0, 400), show:isBelt}),
     separator:           newBlank({ class:"set-sep", driven, show:isNotBelt }),

@@ -522,6 +522,12 @@ export function fdm_export(print, online, ondone, ondebug) {
         if (path.layer >= 0) {
             updateParams(path.layer, path.params);
         }
+        // belt prime strip and part anchor lines print with the fan off
+        // (adhesion first) unless "anchor fan" is turned on
+        if (isBelt && path.slice && path.slice.belt && path.slice.belt.anchor && !process.beltAnchorFan) {
+            fanSpeed = fanSpeedBase;
+            subst.fan_speed = fanSpeed;
+        }
 
         emitPerMM = extrudePerMM(
             lineWidth || extruder.extNozzle,

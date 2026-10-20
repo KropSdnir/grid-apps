@@ -272,6 +272,7 @@ export const conf = {
                 fdmArcTolerance: 0.005,
                 firstLayerBedTemp: 0,
                 firstLayerBeltBump: 0,
+                beltAnchorFan: false,
                 beltPrimeLines: 0,
                 beltPrimeWidth: 0,
                 firstLayerBeltLead: 3,

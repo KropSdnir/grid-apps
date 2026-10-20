@@ -472,6 +472,8 @@ self.lang['en-us'] = {
     fl_brgp_l:      ["spacing between brim and part","in millimeters"],
     fl_bled_s:      "part anchor",
     fl_bled_l:      ["belt part anchor","at start of print","in millimeters"],
+    fl_bafn_s:      "anchor fan",
+    fl_bafn_l:      ["leave the cooling fan on","during the prime lines and","part anchor. off by default"],
     fl_bprl_s:      "prime lines",
     fl_bprl_l:      ["number of wide prime lines","printed first on the belt","joined to the part anchor","0 to disable"],
     fl_bprw_s:      "prime width",
