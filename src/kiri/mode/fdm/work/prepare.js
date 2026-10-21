@@ -1706,12 +1706,15 @@ function slicePrintPath(print, slice, startPoint, offset, output, opt = {}) {
             print.setType('support');
             // support polygon
             next.setZ(z);
+            // outputSupportMult > 0 overrides the fill/shell multiplier for support
+            // lines (0 = same multiplier as everything else)
+            let supMult = process.outputSupportMult > 0 ? process.outputSupportMult : undefined;
             if (process.sliceSupportOutline !== false) {
-                outputTraces([next].appendAll(next.inner || []));
+                outputTraces([next].appendAll(next.inner || []), supMult ? {extrude: supMult} : {});
             }
             if (next.fill) {
                 next.fill.forEach(p => { p.z = z });
-                outputFills(next.fill, {fast: true, near: true});
+                outputFills(next.fill, {fast: true, near: true, fill: supMult});
             }
         } else {
             // solid infill

@@ -724,8 +724,12 @@ export function sliceOne(settings, widget, onupdate, ondone) {
         // islands are judged as whole columns: polygons on adjacent slices whose
         // bounds overlap are linked, and a column is kept if its largest cross
         // section reaches the minimum (so wide supports stay solid where they narrow)
+        // sliceSupportMinAreaPct makes the minimum relative: a percent of the largest
+        // column cross section on this model, so it scales with model size. when both
+        // are set the larger threshold applies
         let minSupport = process.sliceSupportMinArea || 0;
-        if (minSupport > 0) {
+        let minSupportPct = process.sliceSupportMinAreaPct || 0;
+        if (minSupport > 0 || minSupportPct > 0) {
             let nodes = [];
             let byPoly = new Map();
             let parent = [];
@@ -752,6 +756,11 @@ export function sliceOne(settings, widget, onupdate, ondone) {
             for (let node of nodes) {
                 let root = find(node.id);
                 biggest[root] = Math.max(biggest[root] || 0, node.area);
+            }
+            if (minSupportPct > 0) {
+                let largest = 0;
+                for (let root in biggest) largest = Math.max(largest, biggest[root]);
+                minSupport = Math.max(minSupport, largest * minSupportPct / 100);
             }
             for (let slice of stack) {
                 slice.supports = (slice.supports || []).filter(p => {
