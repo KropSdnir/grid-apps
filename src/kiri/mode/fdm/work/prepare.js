@@ -1821,7 +1821,7 @@ function slicePrintPath(print, slice, startPoint, offset, output, opt = {}) {
     // (areas of this layer with nothing above them) are grown to cover the top
     // shells too, trimmed to the part, then traced with closely spaced lines so
     // the nozzle presses the top tracks flat
-    const ironFlow = device.bedBelt ? 0 : (process.outputIroningFlow || 0) / 100;
+    const ironFlow = (process.outputIroningFlow || 0) / 100;
     if (ironFlow > 0 && !firstLayer && slice.flats && slice.flats.length && slice.tops && slice.tops.length) {
         const lineW = process.sliceLineWidth || nozzleSize;
         const minArea = process.outputIroningMinArea || 15;
