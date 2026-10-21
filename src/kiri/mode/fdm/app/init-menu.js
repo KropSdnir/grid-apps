@@ -36,6 +36,11 @@ function isMultiHead() {
     return isNotBelt() && dev.extruders && dev.extruders.length > 1;
 }
 
+function isMultiExtruder() {
+    let dev = api.conf.get().device;
+    return dev.extruders && dev.extruders.length > 1;
+}
+
 function optSelected(sel) {
     let opt = sel.options[sel.selectedIndex];
     return opt ? opt.value : undefined;
@@ -81,11 +86,11 @@ export function menu() {
 
     _____:               newGroup(LANG.sl_menu, $('fdm-layers'), { modes:FDM, driven, hideable, separator, group:"fdm-layers" }),
     sliceHeight:         newInput(LANG.sl_lahi_s, { title:LANG.sl_lahi_l, convert:toFloat }),
-    sliceMinHeight:      newInput(LANG.ad_minl_s, { title:LANG.ad_minl_l, convert:toFloat, bound:bound(0,3.0), show:() => ui.sliceAdaptive.checked }),
+    sliceMinHeight:      newInput(LANG.ad_minl_s, { title:LANG.ad_minl_l, convert:toFloat, bound:bound(0,3.0), show:() => ui.sliceAdaptive.checked && isNotBelt() }),
     sliceTopLayers:      newInput(LANG.sl_ltop_s, { title:LANG.sl_ltop_l, convert:toInt }),
     sliceBottomLayers:   newInput(LANG.sl_lbot_s, { title:LANG.sl_lbot_l, convert:toInt }),
     separator:           newBlank({ class:"set-sep", driven }),
-    sliceAdaptive:       newBoolean(LANG.ad_adap_s, onBooleanClick, { title: LANG.ad_adap_l }),
+    sliceAdaptive:       newBoolean(LANG.ad_adap_s, onBooleanClick, { title: LANG.ad_adap_l, show:isNotBelt }),
     outputLayerRetract:  newBoolean(LANG.ad_lret_s, onBooleanClick, {title:LANG.ad_lret_l}),
     sliceLayerStart:     newSelect(LANG.sl_strt_s, {title:LANG.sl_strt_l}, "start"),
     _____:               newGroup(LANG.sw_menu, $('fdm-walls'), { modes:FDM, driven, hideable, separator, group:"fdm-walls" }),
@@ -138,7 +143,7 @@ export function menu() {
     separator:           newBlank({ class:"set-sep", driven }),
     sliceSupportOutline: newBoolean(LANG.sp_outl_s, onBooleanClick, {title:LANG.sp_outl_l, xshow: () => !isTree() }),
     sliceSupportGap:     newBoolean(LANG.sp_gaps_s, onBooleanClick, {title:LANG.sp_gaps_l }),
-    sliceSupportTree:    newBoolean(LANG.sp_tree_s, onBooleanClick, {title:LANG.sp_tree_l }),
+    sliceSupportTree:    newBoolean(LANG.sp_tree_s, onBooleanClick, {title:LANG.sp_tree_l, show:isNotBelt }),
     separator:           newBlank({ class:"set-sep", driven, show:manualSupport }),
     sliceSupportManual: newRow([
         (ui.ssmAdd = newButton(undefined, onButtonClick, {icon:'<i class="fas fa-plus"></i>'})),
@@ -176,10 +181,10 @@ export function menu() {
     _____:               newGroup(LANG.ou_menu, $('fdm-output'), { modes:FDM, driven, hideable, separator, group:"fdm-out" }),
     outputFeedrate:      newInput(LANG.ou_feed_s, {title:LANG.ou_feed_l, convert:toInt}),
     outputFinishrate:    newInput(LANG.ou_fini_s, {title:LANG.ou_fini_l, convert:toInt}),
-    outputIroningFlow:   newInput(LANG.ou_irfl_s, {title:LANG.ou_irfl_l, convert:toFloat, bound:bound(0,100)}),
-    outputIroningSpace:  newInput(LANG.ou_irsp_s, {title:LANG.ou_irsp_l, convert:toFloat, bound:bound(0.05,2)}),
-    outputIroningSpeed:  newInput(LANG.ou_irsd_s, {title:LANG.ou_irsd_l, convert:toFloat, bound:bound(1,200)}),
-    outputIroningMinArea:newInput(LANG.ou_irma_s, {title:LANG.ou_irma_l, convert:toFloat, bound:bound(0,2000)}),
+    outputIroningFlow:   newInput(LANG.ou_irfl_s, {title:LANG.ou_irfl_l, convert:toFloat, bound:bound(0,100), show:isNotBelt}),
+    outputIroningSpace:  newInput(LANG.ou_irsp_s, {title:LANG.ou_irsp_l, convert:toFloat, bound:bound(0.05,2), show:isNotBelt}),
+    outputIroningSpeed:  newInput(LANG.ou_irsd_s, {title:LANG.ou_irsd_l, convert:toFloat, bound:bound(1,200), show:isNotBelt}),
+    outputIroningMinArea:newInput(LANG.ou_irma_s, {title:LANG.ou_irma_l, convert:toFloat, bound:bound(0,2000), show:isNotBelt}),
     outputSeekrate:      newInput(LANG.ou_move_s, {title:LANG.ou_move_l, convert:toInt}),
     separator:           newBlank({ class:"set-sep", driven }),
     outputShellMult:     newInput(LANG.ou_shml_s, {title:LANG.ou_exml_l, convert:toFloat, bound:bound(0.0,2.0)}),
@@ -196,15 +201,13 @@ export function menu() {
     separator:           newBlank({ class:"set-sep", driven, show:() => ui.fdmArcEnabled.checked && isNotBelt()}),
     outputAvoidGaps:     newBoolean(LANG.ad_agap_s, onBooleanClick, {title:LANG.ad_agap_l}),
     sliceSolidify:       newBoolean(LANG.ad_sold_s, onBooleanClick, {title:LANG.ad_sold_l}),
-    separator:           newBlank({ class:"set-sep", driven, show:isBelt }),
-    outputBeltFirst:     newBoolean(LANG.ad_lbir_s, onBooleanClick, {title:LANG.ad_lbir_l, show:isBelt}),
     _____:               newGroup(LANG.ad_menu, $('fdm-expert'), { modes:FDM, driven, hideable, separator, group:"fdm-xprt" }),
     antiBacklash:        newInput(LANG.ad_abkl_s, {title:LANG.ad_abkl_l, convert:toFloat, bound:bound(0,3)}),
     outputRetractDwell:  newInput(LANG.ad_rdwl_s, {title:LANG.ad_rdwl_l, convert:toInt}),
     outputMinSpeed:      newInput(LANG.ad_mins_s, {title:LANG.ad_mins_l, convert:toFloat, bound:bound(1,200)}),
     outputMaxFlowrate:   newInput(LANG.ad_maxf_s, {title:LANG.ad_maxf_l, convert:toFloat, bound:bound(1,200)}),
-    outputPurgeTower:    newInput(LANG.ad_purg_s, {title:LANG.ad_purg_l, convert:toInt,   bound:bound(0,1000)}),
-    outputScarfLength:   newInput(LANG.ad_scar_s, {title:LANG.ad_scar_l, convert:toFloat, bound:bound(0,1000)}),
+    outputPurgeTower:    newInput(LANG.ad_purg_s, {title:LANG.ad_purg_l, convert:toInt,   bound:bound(0,1000), show:isMultiExtruder}),
+    outputScarfLength:   newInput(LANG.ad_scar_s, {title:LANG.ad_scar_l, convert:toFloat, bound:bound(0,1000), show:isNotBelt}),
     outputShortPoly:     newInput(LANG.ad_spol_s, {title:LANG.ad_spol_l, convert:toFloat, bound:bound(0,10000)}),
     outputCoastDist:     newInput(LANG.ad_scst_s, {title:LANG.ad_scst_l, convert:toFloat, bound:bound(0.0,10)}),
     sliceCompInner:      newInput(LANG.sl_ofin_s, {title:LANG.sl_ofin_l, convert:toFloat, bound:bound(-10.0,10.0)}),
