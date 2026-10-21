@@ -964,6 +964,9 @@ export function sliceOne(settings, widget, onupdate, ondone) {
                 edge: params.sliceSupportEdge || process.sliceSupportEdge || false,
                 minLine: params.sliceSupportMinLine || process.sliceSupportMinLine || 0,
                 tie: params.sliceSupportTie || process.sliceSupportTie || 0,
+                thinLen: process.sliceSupportThin || 0,
+                // pillars stay vertical in the world: the fill grid follows the belt skew
+                phase: widget.belt ? slice.z * widget.belt.slope : 0,
                 isBelt,
                 lineWidth,
                 outline: process.sliceSupportOutline !== false,
@@ -1138,6 +1141,32 @@ export function sliceOne(settings, widget, onupdate, ondone) {
             await processSparseInfill(0.6, 0.8);
         }
 
+        // support contact zone (belt): the part of the support within a few mm of
+        // the part is flagged thin and filled with short dashes (small pillars)
+        // instead of full-width fins; the rest, and the base, keep the normal fill
+        if (isBelt && process.sliceSupportThin > 0 && supportDensity) {
+            let zoneLayers = Math.max(1, Math.round((process.sliceSupportThinZone || 3) / sliceHeight));
+            let minArea = lineWidth * lineWidth;
+            for (let slice of slices) {
+                let polys = (slice.supports || []).filter(p => !p.solidPlate);
+                if (!polys.length) continue;
+                let above = [];
+                let s = slice.up;
+                for (let i = 0; i < zoneLayers && s; i++, s = s.up) {
+                    above.push(...(s.topPolys() || []));
+                }
+                if (!above.length) continue;
+                let contact = POLY.union(above, minArea, true);
+                if (!contact.length) continue;
+                let thin = POLY.trimTo(polys.map(p => p.clone(true)), contact) || [];
+                let wide = [];
+                POLY.subtract(polys, contact, wide, null, slice.z, minArea, { wasm: false });
+                let plate = (slice.supports || []).filter(p => p.solidPlate);
+                for (let p of thin) p.thinSupport = true;
+                slice.supports = POLY.setZ([ ...plate, ...wide, ...thin ], slice.z);
+            }
+        }
+
         // fill all supports (auto and manual)
         if (supportDensity) {
             await processSupportFills(0.8, 0.84);
@@ -1173,6 +1202,40 @@ export function sliceOne(settings, widget, onupdate, ondone) {
 }
 
 // replace with tip2tipEmit?
+/**
+ * Cut fill lines into short dashes on a fixed grid so a support region prints as
+ * small pillars. Dash positions are measured along the line minus `phase`, so
+ * they line up from layer to layer (pillars stay vertical).
+ * @param {Point[]} fill - flat array of point pairs (one line per pair)
+ * @param {number} len - dash length in mm
+ * @param {number} period - dash start to next dash start, in mm
+ * @param {number} phase - offset subtracted from the Y coordinate (belt skew)
+ */
+function dash_lines(fill, len, period, phase) {
+    const out = [];
+    for (let i = 0; i + 1 < fill.length; i += 2) {
+        const a = fill[i], b = fill[i + 1];
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const L = Math.hypot(dx, dy);
+        if (!(L > 0.01)) continue;
+        const alongY = Math.abs(dy) >= Math.abs(dx);
+        const c0 = alongY ? a.y - phase : a.x;
+        const dc = alongY ? dy : dx;
+        const lo = Math.min(c0, c0 + dc), hi = Math.max(c0, c0 + dc);
+        for (let k = Math.floor(lo / period); k * period <= hi; k++) {
+            const s = Math.max(lo, k * period), e = Math.min(hi, k * period + len);
+            if (e - s < len * 0.5) continue;
+            const t0 = (s - c0) / dc, t1 = (e - c0) / dc;
+            const p1 = a.clone(), p2 = a.clone();
+            p1.x = a.x + dx * t0; p1.y = a.y + dy * t0;
+            p2.x = a.x + dx * t1; p2.y = a.y + dy * t1;
+            out.push(p1, p2);
+        }
+    }
+    out.forEach((p, i) => { p.index = (i / 2) | 0; });
+    return out;
+}
+
 function connect_lines(lines, maxd = Infinity) {
     const newlines = [];
     let op2;
@@ -1842,7 +1905,7 @@ function areaFill({ promises: fillQ, polys, angle, spacing, output, minLen, maxL
  * @see CONSTANTS.SUPPORT_AUTO_ANGLE_TALL - Auto angle for tall polygons (1000 = 0°)
  * @see CONSTANTS.SUPPORT_CONNECT_DISTANCE_MULT - Distance multiplier for line connection (2x)
  */
-function layerSupportFill({ promises, slice, lineWidth, density, isBelt, angle, outline, gap, spacingGap, minLine, tie, edge }) {
+function layerSupportFill({ promises, slice, lineWidth, density, isBelt, angle, outline, gap, spacingGap, minLine, tie, edge, thinLen, phase }) {
     let polys = slice.supports;
     if (polys) {
         supportPolyFill({
@@ -1856,6 +1919,8 @@ function layerSupportFill({ promises, slice, lineWidth, density, isBelt, angle, 
             spacingGap,
             minLine,
             edge,
+            thinLen,
+            phase,
             // every Nth layer prints cross lines (0 degrees) that tie the fins together
             tieLayer: tie > 0 && slice.index >= 0 && slice.index % tie === 0,
             tieSpacing: CONSTANTS.SUPPORT_TIE_SPACING,
@@ -1906,10 +1971,12 @@ function layerSupportFill({ promises, slice, lineWidth, density, isBelt, angle, 
  * @see CONSTANTS.SUPPORT_INSET_RATIO - Inset ratio for fill area (1/3)
  * @see CONSTANTS.SUPPORT_CONNECT_DISTANCE_MULT - Distance multiplier for line connection (2x)
  */
-function supportPolyFill({ promises, polys, lineWidth, density, z, isBelt, angle, outline, spacingGap, minLine, tieLayer, tieSpacing, edge }) {
+function supportPolyFill({ promises, polys, lineWidth, density, z, isBelt, angle, outline, spacingGap, minLine, tieLayer, tieSpacing, edge, thinLen, phase }) {
     // calculate fill spacing: an explicit open gap between lines (mm) wins over density
     let spacing = spacingGap > 0 ? lineWidth + spacingGap : lineWidth * (1 / density);
     for (let poly of polys) {
+        // pillar spacing for thin (contact zone) support is the dash period along the line
+        let thin = poly.thinSupport && thinLen > 0 && !tieLayer;
         // base plate polygons print solid (adjacent lines, no gaps)
         let polySpacing = poly.solidPlate ? lineWidth * 0.9 : (tieLayer ? Math.max(spacing, tieSpacing) : spacing);
         // calculate angle based on width/height ratio
@@ -1933,7 +2000,10 @@ function supportPolyFill({ promises, polys, lineWidth, density, z, isBelt, angle
             // edge fins: one fill line flush with each side of the region, so the
             // outermost column sits on the support edge instead of up to a grid
             // step inside it. started from the polygon bounds, not the global grid
-            if (edge && !poly.solidPlate && !tieLayer && !promises && isBelt) {
+            if (thin && poly.fill.length) {
+                poly.fill = dash_lines(poly.fill, thinLen, thinLen + Math.max(spacing - lineWidth, 1), phase || 0);
+            }
+            if (edge && !poly.solidPlate && !poly.thinSupport && !tieLayer && !promises && isBelt) {
                 let shrink = lineWidth * 0.3;
                 for (let ip of inset) {
                     for (let ang of [ 90, -90 ]) {
@@ -1958,7 +2028,7 @@ function supportPolyFill({ promises, polys, lineWidth, density, z, isBelt, angle
                     }
                 }
             }
-            if (!outline && poly.fill.length) {
+            if (!outline && poly.fill.length && !thin) {
                 let ok = p => p && Number.isFinite(p.x) && Number.isFinite(p.y);
                 let joined = connect_lines(poly.fill, spacing * CONSTANTS.SUPPORT_CONNECT_DISTANCE_MULT);
                 // keep the unconnected lines if joining produced invalid points

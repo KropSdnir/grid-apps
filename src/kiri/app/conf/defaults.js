@@ -359,6 +359,8 @@ export const conf = {
                 sliceSupportMinArea: 0,
                 sliceSupportSpacing: 0,
                 sliceSupportMinLine: 0,
+                sliceSupportThin: 0,
+                sliceSupportThinZone: 3,
                 sliceSupportEdge: false,
                 beltPedestalMargin: 0,
                 sliceSupportMinWidth: 0,

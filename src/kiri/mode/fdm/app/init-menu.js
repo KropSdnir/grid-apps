@@ -123,6 +123,8 @@ export function menu() {
     sliceSupportDensity: newInput(LANG.sp_dens_s, {title:LANG.sp_dens_l, convert:toFloat, bound:bound(0.0,1.0)}),
     sliceSupportSpacing: newInput(LANG.sp_spac_s, {title:LANG.sp_spac_l, convert:toFloat, bound:bound(0.0,20.0)}),
     sliceSupportEdge:    newBoolean(LANG.sp_edge_s, onBooleanClick, {title:LANG.sp_edge_l, show:isBelt}),
+    sliceSupportThin:    newInput(LANG.sp_thin_s, {title:LANG.sp_thin_l, convert:toFloat, bound:bound(0.0,20.0), show:isBelt}),
+    sliceSupportThinZone:newInput(LANG.sp_tzon_s, {title:LANG.sp_tzon_l, convert:toFloat, bound:bound(0.0,50.0), show:isBelt}),
     sliceSupportMinLine: newInput(LANG.sp_minl_s, {title:LANG.sp_minl_l, convert:toFloat, bound:bound(0.0,50.0)}),
     sliceSupportMinWidth:newInput(LANG.sp_minw_s, {title:LANG.sp_minw_l, convert:toFloat, bound:bound(0.0,50.0)}),
     sliceSupportTie:     newInput(LANG.sp_tie_s,  {title:LANG.sp_tie_l,  convert:toInt,   bound:bound(0,200)}),
