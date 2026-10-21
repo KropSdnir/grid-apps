@@ -6,7 +6,7 @@ import { MODES } from './consts.js';
 import { filament } from './filament.js';
 
 const KEY = 'jobinfo';
-let box, rows = {}, serial = 0, visible = true, last;
+let box, body, sum, arrow, rows = {}, serial = 0, visible = true, last;
 
 function enabled() {
     return api.local.get(KEY) !== 'off';
@@ -24,6 +24,74 @@ function row(label, id, bold) {
     return r;
 }
 
+function minimized() {
+    return api.local.get(KEY + '-min') === 'on';
+}
+
+/** keep the whole box inside the window so the handle can always be grabbed */
+function clamp() {
+    if (!box || box.style.display === 'none') return;
+    const w = box.offsetWidth || 210, h = box.offsetHeight || 30;
+    const x = Math.min(Math.max(0, box.offsetLeft), Math.max(0, window.innerWidth - w));
+    const y = Math.min(Math.max(0, box.offsetTop), Math.max(0, window.innerHeight - h));
+    box.style.left = x + 'px';
+    box.style.top = y + 'px';
+}
+
+function applyMin() {
+    const min = minimized();
+    body.style.display = min ? 'none' : 'flex';
+    sum.style.display = min ? '' : 'none';
+    arrow.textContent = min ? '\u25B8' : '\u25BE';
+    arrow.title = min ? 'expand' : 'collapse';
+    box.style.minWidth = min ? '0' : '210px';
+    clamp();
+}
+
+function toggleMin() {
+    api.local.set(KEY + '-min', minimized() ? 'off' : 'on');
+    applyMin();
+}
+
+/** header: drag to move, click the arrow (or double-click the header) to collapse */
+function handle() {
+    const head = document.createElement('div');
+    head.style.cssText = 'display:flex;flex-direction:row;align-items:center;gap:8px;cursor:move;user-select:none;pointer-events:auto;touch-action:none;font-weight:bold';
+    head.title = 'drag to move, double-click to collapse';
+    const grip = document.createElement('span');
+    grip.textContent = '\u2630';
+    grip.style.cssText = 'opacity:0.6';
+    const title = document.createElement('span');
+    title.textContent = 'job info';
+    sum = document.createElement('span');
+    sum.style.cssText = 'font-family:monospace;font-weight:normal;margin-left:4px';
+    const grow = document.createElement('span');
+    grow.style.flexGrow = '1';
+    arrow = document.createElement('span');
+    arrow.style.cssText = 'cursor:pointer;padding:0 4px;font-size:14px';
+    head.append(grip, title, sum, grow, arrow);
+    arrow.onclick = ev => { ev.stopPropagation(); toggleMin(); };
+    arrow.onpointerdown = ev => ev.stopPropagation();
+    head.ondblclick = toggleMin;
+    head.onpointerdown = ev => {
+        if (ev.button !== 0) return;
+        const dx = ev.clientX - box.offsetLeft, dy = ev.clientY - box.offsetTop;
+        head.setPointerCapture(ev.pointerId);
+        head.onpointermove = mv => {
+            box.style.left = (mv.clientX - dx) + 'px';
+            box.style.top = (mv.clientY - dy) + 'px';
+            clamp();
+        };
+        head.onpointerup = head.onpointercancel = up => {
+            head.onpointermove = head.onpointerup = head.onpointercancel = null;
+            try { head.releasePointerCapture(up.pointerId); } catch (e) { }
+            api.local.set(KEY + '-pos', box.offsetLeft + ',' + box.offsetTop);
+        };
+        ev.preventDefault();
+    };
+    return head;
+}
+
 function build() {
     if (box) return;
     box = document.createElement('div');
@@ -31,10 +99,12 @@ function build() {
     box.style.cssText = [
         'position:fixed', 'left:220px', 'top:76px', 'z-index:50', 'display:none', 'flex-direction:column', 'font-family:Arial,Helvetica,sans-serif',
         'padding:8px 12px', 'border-radius:6px', 'font-size:12px', 'line-height:1.35',
-        'pointer-events:none', 'min-width:210px',
+        'pointer-events:none', 'min-width:210px', 'overflow:hidden',
         'border:1px solid rgba(128,128,128,0.5)'
     ].join(';');
-    box.append(
+    body = document.createElement('div');
+    body.style.cssText = 'display:flex;flex-direction:column;margin-top:6px';
+    body.append(
         row('filament density (g/cm^3)', 'density'),
         row('filament used (mm)', 'distance'),
         row('printed weight (g)', 'weight'),
@@ -42,7 +112,15 @@ function build() {
         row('material cost', 'cost'),
         row('time estimate (h:m:s)', 'time', true)
     );
+    box.append(handle(), body);
+    const pos = (api.local.get(KEY + '-pos') || '').split(',').map(parseFloat);
+    if (pos.length === 2 && pos.every(v => v >= 0)) {
+        box.style.left = pos[0] + 'px';
+        box.style.top = pos[1] + 'px';
+    }
     document.body.appendChild(box);
+    applyMin();
+    window.addEventListener('resize', clamp);
 }
 
 function theme() {
@@ -75,8 +153,10 @@ function show(info) {
     rows.ftype.textContent = `${filament.type()} @ ${filament.money(price)}/kg`;
     rows.cost.textContent = filament.money(filament.cost(weight, price));
     rows.time.textContent = hms(info.time);
+    sum.textContent = `${filament.money(filament.cost(weight, price))}  ${hms(info.time)}`;
     visible = true;
     box.style.display = enabled() ? 'flex' : 'none';
+    clamp();
 }
 
 function hide() {
@@ -118,6 +198,9 @@ export const jobinfo = {
         api.local.set(KEY, on ? 'on' : 'off');
         setIcon(on);
         if (box) box.style.display = on && rows.time.textContent ? 'flex' : 'none';
+        // switched on before any numbers exist (or while off during a preview): compute them now
+        if (on && !rows.time.textContent) refresh();
+        clamp();
     },
     refresh
 };
