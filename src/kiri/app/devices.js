@@ -203,6 +203,7 @@ function setDeviceCode(code, devicename) {
             ui.deviceOrigin,
             ui.deviceRound,
             ui.deviceBelt,
+            ui.bedBeltAngle,
             ui.fwRetract,
             ui.deviceZMax,
             ui.gcodeTime,

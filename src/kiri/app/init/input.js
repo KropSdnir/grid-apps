@@ -242,6 +242,7 @@ export function init_input() {
         deviceOrigin:     newBoolean(LANG.dv_orgc_s, onBooleanClick, {title:LANG.dv_orgc_l, modes:FDM_LZN, show:() => !ui.deviceRound.checked}),
         deviceRound:      newBoolean(LANG.dv_bedc_s, onBooleanClick, {title:LANG.dv_bedc_l, modes:FDM, trigger, show:isNotBelt}),
         deviceBelt:       newBoolean(LANG.dv_belt_s, onBooleanClick, {title:LANG.dv_belt_l, modes:FDM, trigger, show:() => !ui.deviceRound.checked}),
+        bedBeltAngle:     newInput(LANG.dv_bang_s, {title:LANG.dv_bang_l, convert:toFloat, size:5, modes:FDM, show:() => ui.deviceBelt.checked}),
         separator:        newBlank({class:"pop-sep", modes:FDM, driven}),
         spindleMax:       newInput(LANG.dv_spmx_s, {title:LANG.dv_spmx_l, convert:toInt, size:5, modes:CAM, trigger}),
         deviceZMax:       newInput(LANG.dv_zmax_s, {title:LANG.dv_zmax_l, convert:toInt, size:5, modes:FDM}),

@@ -1,6 +1,7 @@
 /** Copyright Stewart Allen <sa@grid.space> -- All Rights Reserved */
 
 import { arcToPath } from '../../geo/paths.js';
+import { beltConstants } from './belt-kin.js';
 import { createVM } from '../../moto/quickjs.js';
 import { newPoint } from '../../geo/point.js';
 import { newPolygon } from '../../geo/polygon.js';
@@ -8,7 +9,6 @@ import { util } from '../../geo/base.js';
 
 const { numOrDefault } = util;
 
-const BELTFACT = Math.cos(Math.PI / 4);
 const DEG2RAD = Math.PI / 180;
 
 class Print {
@@ -391,6 +391,7 @@ class Print {
         const fdm = opts.fdm;
         const cam = opts.cam;
         const belt = opts.belt;
+        const beltk = beltConstants(opts.beltAngle || 45);
         const lines = gcode
             .toUpperCase()
             .replaceAll("X", " X")
@@ -595,8 +596,8 @@ class Print {
             let { point, prevPoint } = processLine(line, axes);
 
             if (morph && belt) {
-                point.y -= point.z * BELTFACT;
-                point.z *= BELTFACT;
+                point.y -= point.z * beltk.cosf;
+                point.z *= beltk.sinf;
             }
 
             const retract = (fdm && pos.E < 0) || undefined;

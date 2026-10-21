@@ -154,6 +154,8 @@ self.lang['en-us'] = {
     dv_bedc_l:      "device bed is circular",
     dv_belt_s:      "belt bed",
     dv_belt_l:      "continuous printing bed",
+    dv_bang_s:      "belt angle",
+    dv_bang_l:      ["gantry angle to the belt","in degrees (CR-30 = 45)","valid 10 - 80"],
     dv_fsrc_s:      "filament source",
     dv_fsrc_l:      ["how filament is fed\ninto the extruder"],
     dv_retr_s:      "firmware retract",

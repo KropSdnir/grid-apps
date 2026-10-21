@@ -5,6 +5,7 @@ import '../../add/class.js';
 import '../../add/three.js';
 
 import { base } from '../../geo/base.js';
+import { beltAngle, beltConstants } from '../core/belt-kin.js';
 import { codec } from '../core/codec.js';
 import { JSZip } from '../../ext/jszip-esm.js';
 import { load } from "../../load/png.js";
@@ -432,12 +433,12 @@ const dispatch = {
             let widget = group[0];
             let proc = settings.process;
             let track = widget.track;
-            let angle = proc.sliceAngle;
+            let angle = beltAngle(settings.device);
             let xpos = track.pos.x;
             let yoff = proc.beltAnchor || proc.firstLayerBeltLead || 0;
             let ypos = settings.device.bedDepth / 2 + track.pos.y + miny + yoff;
-            let radians = Math.PI / 180;
-            let rotation = radians * angle;
+            let rotation = angle * Math.PI / 180;
+            let { cosf, sinf, slope } = beltConstants(angle);
             for (let w of group) {
                 w.moveMesh(0, miny, 0);
             }
@@ -452,10 +453,10 @@ const dispatch = {
                 dy: - miny - yoff,
                 dz: 0,
                 // ratio for anchor lengths, path offsets
-                cosf: Math.cos(radians * angle), // Y comp
-                sinf: Math.sin(radians * angle), // Z comp
+                cosf, // Y comp
+                sinf, // Z comp
                 // slope for calculating z = 0 from angle bias
-                slope: Math.tan(radians * (90 - angle)),
+                slope,
                 // only the first printed model gets the prime strip
                 primeFirst: group === firstGroup
             };
@@ -658,7 +659,8 @@ const dispatch = {
         }, {
             fdm: mode === 'FDM',
             cam: mode === 'CAM',
-            belt: device.bedBelt
+            belt: device.bedBelt,
+            beltAngle: beltAngle(device)
         });
     },
 

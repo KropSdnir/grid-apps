@@ -1,5 +1,6 @@
 /** Copyright Stewart Allen <sa@grid.space> -- All Rights Reserved */
 
+import { beltAngle } from '../../../core/belt-kin.js';
 import { newPoint } from '../../../../geo/point.js';
 import { $ } from '../../../../moto/webui.js';
 import { api } from '../../../app/api.js';
@@ -281,7 +282,7 @@ function supportStart({ remove } = { remove: false }) {
                 // Belt mode: check if surface will face downward after belt rotation
                 // After rotating by angle θ around X: nz' = ny*sin(θ) + nz*cos(θ)
                 // We want nz' < -threshold (within cone of support angle from down)
-                const angle = (settings.process.sliceAngle || 45) * Math.PI / 180;
+                const angle = beltAngle(settings.device) * Math.PI / 180;
                 const rotatedZ = normal.y * Math.sin(angle) + normal.z * Math.cos(angle);
                 needsSupport = rotatedZ < -supportThreshold;
             } else {
@@ -305,7 +306,7 @@ function supportStart({ remove } = { remove: false }) {
     // Get belt configuration for paint constraint
     const settings = api.conf.get();
     const isBelt = settings.device.bedBelt;
-    const beltAngle = isBelt ? (settings.process.sliceAngle || 45) * Math.PI / 180 : 0;
+    const beltAngleRad = isBelt ? beltAngle(settings.device) * Math.PI / 180 : 0;
     const supportAngle = settings.process.sliceSupportAngle || 45;
 
     api.widgets.each(w => {
@@ -326,7 +327,7 @@ function supportStart({ remove } = { remove: false }) {
         }
         addPaintOverlayTexture(mat, w.anno.paint, new THREE.Color(paintColor), {
             beltMode: isBelt,
-            beltAngle,
+            beltAngle: beltAngleRad,
             supportAngle
         });
     })

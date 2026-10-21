@@ -1,6 +1,7 @@
 /** Copyright Stewart Allen <sa@grid.space> -- All Rights Reserved */
 
 import { base, util } from '../../../../geo/base.js';
+import { beltAngle, beltConstants, sliceToMachine } from '../../../core/belt-kin.js';
 import { getRangeParameters } from '../core/params.js';
 import { FDM } from './init-work.js';
 import { version } from '../../../../moto/license.js';
@@ -113,8 +114,7 @@ export function fdm_export(print, online, ondone, ondebug) {
         pidx, path, out, speedMMM, emitMM, emitPerMM, lastp, laste, dist,
         lines = 0,
         bytes = 0,
-        bcos = Math.cos(Math.PI / 4),
-        icos = 1 / bcos,
+        belt = beltConstants(beltAngle(device)),
         inloops = 0,
         minz = { x: Infinity, y: Infinity, z: Infinity },
         // lenghts of each filament (by nozzle) consumed
@@ -459,8 +459,9 @@ export function fdm_export(print, online, ondone, ondebug) {
         if (isBelt) {
             let zheight = path ? path.height || 0 : 0;
             epos.x = originCenter ? -pos.x : device.bedWidth - pos.x;
-            epos.z = pos.z * icos;
-            epos.y = -pos.y + epos.z * bcos + belt_add_y;
+            let m = sliceToMachine(pos.y, pos.z, belt);
+            epos.z = m.z;
+            epos.y = m.y + belt_add_y;
             lout = epos;
         }
         if (emit.x) o.append(axis.X).append(epos.x.toFixed(decimals));
@@ -546,7 +547,7 @@ export function fdm_export(print, online, ondone, ondebug) {
                 (process.firstSliceHeight || process.sliceHeight) : path.height);
 
         zpos = path.z || zpos;
-        bmax = Math.max(bmax, pos.z * icos);
+        bmax = Math.max(bmax, pos.z * belt.zScale);
         subst.z = subst.Z = zpos.round(3);
         subst.e = subst.E = outputLength;
         subst.layer = layer;
