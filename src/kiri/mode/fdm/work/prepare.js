@@ -1399,6 +1399,52 @@ function slicePrintPath(print, slice, startPoint, offset, output, opt = {}) {
     }
 
     /**
+     * ironing: back and forth passes over closely spaced fill lines. adjacent
+     * lines are joined with non-extruding moves at ironing speed; larger jumps
+     * retract and travel at move speed
+     * @param {Point[]} lines flat array of point pairs ordered across the area
+     * @param {number} flow extrusion multiplier for the pass
+     * @param {number} speed ironing speed in mm/s
+     */
+    function outputIroning(lines, flow, speed) {
+        const segs = [];
+        for (let i = 0; i + 1 < lines.length; i += 2) {
+            segs.push({ a: lines[i], b: lines[i + 1], used: false });
+        }
+        let last = null, left = segs.length;
+        while (left > 0) {
+            // next line: the unused one with the nearest end to where the nozzle is
+            let best = null, bestD = Infinity, flipEnds = false;
+            const from = last || startPoint;
+            for (const s of segs) {
+                if (s.used) continue;
+                const da = from.distTo2D(s.a), db = from.distTo2D(s.b);
+                const d = Math.min(da, db);
+                if (d < bestD) {
+                    bestD = d;
+                    best = s;
+                    flipEnds = db < da;
+                }
+            }
+            best.used = true;
+            left--;
+            const a = flipEnds ? best.b : best.a;
+            const b = flipEnds ? best.a : best.b;
+            if (!last || bestD > thinWall * 2) {
+                if (last) {
+                    retract();
+                }
+                print.addOutput(preout, a, 0, moveSpeed, extruder);
+            } else {
+                print.addOutput(preout, a, 0, speed, extruder);
+            }
+            print.addOutput(preout, b, flow, speed, extruder);
+            last = b;
+            startPoint = b;
+        }
+    }
+
+    /**
      * convert cross-hatch thin-fill into lines by connecting short segment mid-points
      */
     function outputThin(lines) {
@@ -1768,6 +1814,31 @@ function slicePrintPath(print, slice, startPoint, offset, output, opt = {}) {
         }
         if (y) {
             outputSparse(y, 0, process.polishSpeed);
+        }
+    }
+
+    // ironing: a slow, very low flow pass over exposed top surfaces. the flats
+    // (areas of this layer with nothing above them) are grown to cover the top
+    // shells too, trimmed to the part, then traced with closely spaced lines so
+    // the nozzle presses the top tracks flat
+    const ironFlow = (process.outputIroningFlow || 0) / 100;
+    if (ironFlow > 0 && !firstLayer && slice.flats && slice.flats.length && slice.tops && slice.tops.length) {
+        const lineW = process.sliceLineWidth || nozzleSize;
+        const minArea = process.outputIroningMinArea || 15;
+        const areas = slice.flats.filter(p => Math.abs(p.areaDeep()) >= minArea);
+        if (areas.length) {
+            const o = { z, flat: true };
+            let grown = POLY.expand(areas, (process.sliceShells || 0) * lineW, z, null, 1) || [];
+            let region = grown.length ? POLY.trimTo(grown, slice.topPolys()) || [] : [];
+            region = region.length ? POLY.offset(region, -lineW * 0.25, o) || [] : [];
+            if (region.length) {
+                const lines = [];
+                POLY.fillArea(region, 45, process.outputIroningSpace || 0.25, lines);
+                if (lines.length) {
+                    print.setType('ironing');
+                    outputIroning(lines, ironFlow, process.outputIroningSpeed || 20);
+                }
+            }
         }
     }
 
