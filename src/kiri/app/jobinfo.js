@@ -3,9 +3,10 @@
 import { api } from './api.js';
 import { client } from './workers.js';
 import { MODES } from './consts.js';
+import { filament } from './filament.js';
 
 const KEY = 'jobinfo';
-let box, rows = {}, serial = 0, visible = true;
+let box, rows = {}, serial = 0, visible = true, last;
 
 function enabled() {
     return api.local.get(KEY) !== 'off';
@@ -37,6 +38,8 @@ function build() {
         row('filament density (g/cm^3)', 'density'),
         row('filament used (mm)', 'distance'),
         row('printed weight (g)', 'weight'),
+        row('filament type', 'ftype'),
+        row('material cost', 'cost'),
         row('time estimate (h:m:s)', 'time', true)
     );
     document.body.appendChild(box);
@@ -63,10 +66,14 @@ function show(info) {
     const set = api.conf.get();
     const density = parseFloat(api.local.get('print-density')) || 1.25;
     const dia = set.device && set.device.extruders && set.device.extruders[0] ? set.device.extruders[0].extFilament : 1.75;
-    const weight = Math.PI * (dia / 2) * (dia / 2) * info.distance * density / 1000;
+    const weight = filament.weight(info.distance, dia, density);
+    const price = filament.price();
+    last = info;
     rows.density.textContent = density.toFixed(2);
     rows.distance.textContent = Math.round(info.distance);
     rows.weight.textContent = weight.toFixed(2);
+    rows.ftype.textContent = `${filament.type()} @ ${filament.money(price)}/kg`;
+    rows.cost.textContent = filament.money(filament.cost(weight, price));
     rows.time.textContent = hms(info.time);
     visible = true;
     box.style.display = enabled() ? 'flex' : 'none';
@@ -100,7 +107,9 @@ export const jobinfo = {
         build();
         setIcon(enabled());
         api.event.on('preview.end', refresh);
-        api.event.on('slice.begin', () => { serial++; hide(); });
+        // type, price or density edited in the export dialog
+        api.event.on('filament.change', () => { if (last && box && box.style.display !== 'none') show(last); });
+        api.event.on('slice.begin', () => { serial++; last = undefined; hide(); });
         const item = document.getElementById('view-jobinfo');
         if (item) item.onclick = jobinfo.toggle;
     },

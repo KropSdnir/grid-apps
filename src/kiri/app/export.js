@@ -9,6 +9,7 @@ import { MODES } from './consts.js';
 import { LASER as laser_driver } from '../mode/laser/init-work.js';
 import { SLA as sla_client } from '../mode/sla/app/init-ui.js';
 import { hash } from '../../ext/md5.js';
+import { filament, FILAMENT_TYPES } from './filament.js';
 
 /**
  * Sequential print counter for generating unique export filenames.
@@ -171,6 +172,17 @@ function callExport(callback, mode, names) {
         section.push(line);
     }, (output, error) => {
         api.hide.alert(alert);
+        if (!error && mode === 'FDM' && output && output.distance) {
+            // cost comment goes at the top; total length is only known once generation is done
+            try {
+                const dia = api.conf.get().device.extruders[0].extFilament;
+                const head = filament.gcodeHeader(output.distance, dia, api.local.get('print-density'));
+                gcode.unshift(head);
+                output.costHead = head;
+                output.bytes += head.length + 1;
+                output.lines += head.split('\n').length;
+            } catch (e) { console.log(e) }
+        }
         if (error) {
             api.show.alert(error, 5);
         } else if (callback) {
@@ -432,6 +444,48 @@ function exportGCodeDialog(gcode, sections, info, names) {
             if (ev.key === 'Enter') calcWeight();
         };
         } catch (e) { }
+        calcCost();
+    }
+
+    // material cost from weight and $/kg, and refresh the cost comment at the top of the gcode
+    function calcCost() {
+        try {
+            const price = parseFloat($('print-fprice').value);
+            const grams = info.weight || 0;
+            $('print-fcost').value = filament.money(filament.cost(grams, price >= 0 ? price : filament.price()));
+            api.event.emit('filament.change');
+            const head = info.costHead;
+            if (head && gcode.startsWith(head)) {
+                const dia = info.settings.device.extruders[0].extFilament;
+                const next = filament.gcodeHeader(info.distance, dia, $('print-density').value);
+                gcode = next + gcode.substring(head.length);
+                info.bytes += next.length - head.length;
+                info.costHead = next;
+                $('print-filesize').value = util.comma(info.bytes);
+                if (preview) $('code-preview-textarea').value = gcode.substring(0, 65535);
+            }
+        } catch (e) { }
+    }
+
+    function setupFilament() {
+        const sel = $('print-ftype'), price = $('print-fprice');
+        sel.innerHTML = FILAMENT_TYPES.map(t => `<option value="${t}">${t}</option>`).join('');
+        sel.value = filament.type();
+        price.value = filament.price();
+        $('print-density').value = localGet('print-density') || $('print-density').value;
+        $('print-density').onchange = () => {
+            localSet('print-density', $('print-density').value.trim());
+            calcWeight();
+        };
+        sel.onchange = () => {
+            filament.setType(sel.value);
+            price.value = filament.price();
+            calcCost();
+        };
+        price.oninput = price.onchange = () => {
+            filament.setPrice(sel.value, price.value);
+            calcCost();
+        };
     }
 
     function calcTime() {
@@ -463,6 +517,7 @@ function exportGCodeDialog(gcode, sections, info, names) {
         }
         calcTime();
         if (fdm) {
+            setupFilament();
             calcWeight();
         }
 
