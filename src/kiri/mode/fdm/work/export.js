@@ -52,7 +52,7 @@ export function fdm_export(print, online, ondone, ondebug) {
         bmax = 0,
         belt_add_y = (process.firstLayerYOffset || 0) - (belty || 0),
         oloops = process.outputLoops || 0,
-        zhop = process.zHopDistance || 0, // range
+        zhop = isBelt ? 0 : (process.zHopDistance || 0), // range
         lineWidth = process.sliceLineWidth || 0,
         seekMMM = process.outputSeekrate * 60,
         retDist = process.outputRetractDist || 0, // range
@@ -167,7 +167,7 @@ export function fdm_export(print, online, ondone, ondebug) {
     // smallish band-aid. refactor above to remove redundancy
     function updateParams(layer, params) {
         if (!params) params = getRangeParameters(process, layer);
-        zhop = params.zHopDistance || 0; // range
+        zhop = isBelt ? 0 : (params.zHopDistance || 0); // range
         retDist = params.outputRetractDist || 0; // range
         retSpeed = params.outputRetractSpeed * 60 || 1; // range
         retDwell = params.outputRetractDwell || 0; // range
