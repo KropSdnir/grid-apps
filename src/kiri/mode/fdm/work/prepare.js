@@ -1409,6 +1409,8 @@ function slicePrintPath(print, slice, startPoint, offset, output, opt = {}) {
     function outputIroning(lines, flow, speed) {
         const segs = [];
         for (let i = 0; i + 1 < lines.length; i += 2) {
+            // fill points carry no usable z; put them on this layer
+            lines[i].z = lines[i + 1].z = z;
             segs.push({ a: lines[i], b: lines[i + 1], used: false });
         }
         let last = null, left = segs.length;
