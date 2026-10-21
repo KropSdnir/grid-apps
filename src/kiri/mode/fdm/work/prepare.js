@@ -906,12 +906,12 @@ export async function fdm_prepare(widgets, settings, update) {
                 if (process.outputAvoidGaps) {
                     let beltPoint = lastLayerOut.point.clone();
                     beltPoint.y = y;
-                    print.addOutput(tmpout, beltPoint, 0, outputSeekrate, tool);
+                    print.addOutput(tmpout, beltPoint, 0, outputSeekrate, tool, {type: 'brim'});
                 }
                 // outside brim
                 if (firstLayerBrim && !brimHalf) {
-                    print.addOutput(tmpout, newPoint(maxx + b, y, z), 0,    outputSeekrate, tool);
-                    print.addOutput(tmpout, newPoint(maxx + g, y, z), emit, firstLayerRate, tool,{retract: true})
+                    print.addOutput(tmpout, newPoint(maxx + b, y, z), 0,    outputSeekrate, tool, {type: 'brim'});
+                    print.addOutput(tmpout, newPoint(maxx + g, y, z), emit, firstLayerRate, tool,{retract: true, type: 'brim'})
                 }
                 // inside brim
                 if (firstLayerBrimIn && pads.length > 1) {
@@ -923,26 +923,26 @@ export async function fdm_prepare(widgets, settings, update) {
                         lpad = pad;
                         if (x1 - x0 > bi * 2) {
                             // over 2x brim so emit two segments
-                            print.addOutput(tmpout, newPoint(x1 - g, y, z), 0,    outputSeekrate, tool);
-                            print.addOutput(tmpout, newPoint(x1 - bi, y, z), emit, firstLayerRate, tool, {retract: true});
-                            print.addOutput(tmpout, newPoint(x0 + bi, y, z), 0,    outputSeekrate, tool);
-                            print.addOutput(tmpout, newPoint(x0 + g, y, z), emit, firstLayerRate, tool, {retract: true});
+                            print.addOutput(tmpout, newPoint(x1 - g, y, z), 0,    outputSeekrate, tool, {type: 'brim'});
+                            print.addOutput(tmpout, newPoint(x1 - bi, y, z), emit, firstLayerRate, tool, {retract: true, type: 'brim'});
+                            print.addOutput(tmpout, newPoint(x0 + bi, y, z), 0,    outputSeekrate, tool, {type: 'brim'});
+                            print.addOutput(tmpout, newPoint(x0 + g, y, z), emit, firstLayerRate, tool, {retract: true, type: 'brim'});
                         } else if (x1 - x0 > bi / 3) {
                             // over 1/3rd brim length emit single segment
-                            print.addOutput(tmpout, newPoint(x1 - g, y, z), 0,    outputSeekrate, tool);
-                            print.addOutput(tmpout, newPoint(x0 + g, y, z), emit, firstLayerRate, tool, {retract: true});
+                            print.addOutput(tmpout, newPoint(x1 - g, y, z), 0,    outputSeekrate, tool, {type: 'brim'});
+                            print.addOutput(tmpout, newPoint(x0 + g, y, z), emit, firstLayerRate, tool, {retract: true, type: 'brim'});
                         }
                     }
                 }
                 // outside brim
                 if (firstLayerBrim) {
-                    print.addOutput(tmpout, newPoint(minx - b, y, z), 0,    outputSeekrate, tool);
-                    print.addOutput(tmpout, newPoint(minx - g, y, z), emit, firstLayerRate, tool, {retract: true});
+                    print.addOutput(tmpout, newPoint(minx - b, y, z), 0,    outputSeekrate, tool, {type: 'brim'});
+                    print.addOutput(tmpout, newPoint(minx - g, y, z), emit, firstLayerRate, tool, {retract: true, type: 'brim'});
                 }
                 // when there is a printing move between layers
                 // inject non-printing move to after brim to prevent erroneous extrusion
                 if (layer[0].emit && lastLayerOut) {
-                    print.addOutput(tmpout, layer[0].point.clone(), 0, outputSeekrate, tool);
+                    print.addOutput(tmpout, layer[0].point.clone(), 0, outputSeekrate, tool, {type: 'brim'});
                 }
                 layer.splice(0,0,...tmpout);
             } else {
