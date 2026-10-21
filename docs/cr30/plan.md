@@ -6,6 +6,12 @@ Goal: make Kiri:Moto the best slicer for the Creality CR-30 (45 degree belt prin
 Phases 1-5 are a roadmap; **Phase 0 is fully specified below and is the only phase to
 execute now.**
 
+The user's machine (overrides any stock-CR-30 assumption below): Klipper/Moonraker,
+0.6 mm nozzle, 45° belt, bed 220 × 451.5 mm. Klipper has no native M808, so the
+`outputLoops` repeat feature needs a Klipper macro or a different approach (Phase 3).
+The user prints "pedestal" style: part tilted −45° about X so its layers are level
+with the part on the belt.
+
 ---
 
 ## Belt geometry reference (read before touching belt code)
@@ -256,6 +262,8 @@ Commit: `belt: force z-hop off in belt mode`
    - `slice.js`: `const sliceMinHeight = process.sliceAdaptive && !isBelt && process.sliceMinHeight > 0 ? ...`
 3. Ironing (only affects layer-parallel faces, which barely exist on a belt):
    - `prepare.js`: `const ironFlow = device.bedBelt ? 0 : (process.outputIroningFlow || 0) / 100;`
+   - **Reverted in `93b74092`:** pedestal prints (part tilted −45° about X) have top
+     surfaces parallel to the layers, so ironing stays available on belt printers.
 4. "Belt first" (tooltip says testing no longer recommends it): in `prepare.js` remove
    the `beltFirst = process.outputBeltFirst || false,` declaration and the
    `if (beltFirst) { shellOrder = -1; }` block. Keep `startPoint = startClone;`.
