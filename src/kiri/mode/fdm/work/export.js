@@ -164,6 +164,20 @@ export function fdm_export(print, online, ondone, ondebug) {
         }
     }
 
+    // belt: the prime strip and part anchor sit below slice z 0, so their belt Z
+    // is negative. the belt origin is arbitrary after the start code's "G92 Z0",
+    // so shift every emitted belt Z by the lowest layer Z. the first printed line
+    // is then at belt Z 0 and the belt only ever moves forward. gantry Y and all
+    // relative belt distances are unchanged.
+    let beltZShift = 0;
+    if (isBelt) {
+        let zlast = 0;
+        for (const l of layers) {
+            zlast = l.z || zlast;
+            beltZShift = Math.min(beltZShift, zlast * belt.zScale);
+        }
+    }
+
     // smallish band-aid. refactor above to remove redundancy
     function updateParams(layer, params) {
         if (!params) params = getRangeParameters(process, layer);
@@ -460,7 +474,7 @@ export function fdm_export(print, online, ondone, ondebug) {
             let zheight = path ? path.height || 0 : 0;
             epos.x = originCenter ? -pos.x : device.bedWidth - pos.x;
             let m = sliceToMachine(pos.y, pos.z, belt);
-            epos.z = m.z;
+            epos.z = m.z - beltZShift;
             epos.y = m.y + belt_add_y;
             lout = epos;
         }
