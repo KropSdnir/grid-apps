@@ -277,7 +277,7 @@ export function sliceOne(settings, widget, onupdate, ondone) {
         return ondone("invalid nozzle size");
     }
 
-    const sliceMinHeight = process.sliceAdaptive && process.sliceMinHeight > 0 ?
+    const sliceMinHeight = process.sliceAdaptive && !isBelt && process.sliceMinHeight > 0 ?
         Math.min(process.sliceMinHeight, sliceHeight) : 0;
 
     if (sliceHeightBase <= 0) {

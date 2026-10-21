@@ -58,7 +58,7 @@ export function fdm_export(print, online, ondone, ondebug) {
         retDist = process.outputRetractDist || 0, // range
         retSpeed = process.outputRetractSpeed * 60 || 1, // range
         retDwell = process.outputRetractDwell || 0, // range
-        scarfZ = process.outputScarfLength ? true : false,
+        scarfZ = !isBelt && process.outputScarfLength ? true : false,
         originCenter = device.originCenter || bedRound,
         offset = originCenter ? {
             x: 0,

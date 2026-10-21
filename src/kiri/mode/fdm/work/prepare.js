@@ -989,7 +989,7 @@ function slicePrintPath(print, slice, startPoint, offset, output, opt = {}) {
         process = opt.params || settings.process,
         originCenter = device.originCenter || bedRound,
         extruder = parseInt(slice.extruder || 0),
-        scarfLength = process.outputScarfLength || 0,
+        scarfLength = device.bedBelt ? 0 : (process.outputScarfLength || 0),
         minLayerTime = process.outputMinLayerTime || 0,
         nozzleSize = process.sliceLineWidth || device.extruders[extruder].extNozzle,
         nozzles = device.extruders.map(e => e.extNozzle),
@@ -1031,7 +1031,6 @@ function slicePrintPath(print, slice, startPoint, offset, output, opt = {}) {
             y: isBelt ? 0 : bedDepth/2,
             z: 0
         },
-        beltFirst = process.outputBeltFirst || false,
         startClone = startPoint.clone(),
         seedPoint = opt.seedPoint || startPoint,
         switchTop = print.lastPoly && print.lastPoly.perimeter() < process.outputShortPoly,
@@ -1757,12 +1756,8 @@ function slicePrintPath(print, slice, startPoint, offset, output, opt = {}) {
             }
 
             // optimize start point on belt for tops touching belt
-            // and enforce optimal shell order (outer first)
             if (isBelt && opt.onBelt) {
                 startPoint = startClone;
-                if (beltFirst) {
-                    shellOrder = -1;
-                }
             }
 
             // raft
@@ -1823,7 +1818,7 @@ function slicePrintPath(print, slice, startPoint, offset, output, opt = {}) {
     // (areas of this layer with nothing above them) are grown to cover the top
     // shells too, trimmed to the part, then traced with closely spaced lines so
     // the nozzle presses the top tracks flat
-    const ironFlow = (process.outputIroningFlow || 0) / 100;
+    const ironFlow = device.bedBelt ? 0 : (process.outputIroningFlow || 0) / 100;
     if (ironFlow > 0 && !firstLayer && slice.flats && slice.flats.length && slice.tops && slice.tops.length) {
         const lineW = process.sliceLineWidth || nozzleSize;
         const minArea = process.outputIroningMinArea || 15;
