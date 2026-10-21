@@ -1281,7 +1281,7 @@ function slicePrintPath(print, slice, startPoint, offset, output, opt = {}) {
             let scarf = (slice.index > 0 && traceNo === 0 && z - startPoint?.z > 1e-3) ? scarfLength : 0;
             startPoint = print.polyPrintPath(poly, startPoint, preout, {
                 accel: finishShell,
-                arcOpts: fdmArcEnabled ? arcOpts : undefined,
+                arcOpts: fdmArcEnabled && !isBelt ? arcOpts : undefined,
                 ccw: opt.shell && process.outputAlternating && slice.index % 2,
                 coast: firstLayer ? 0 : coastDist,
                 extrude: numOrDefault(opt.extrude, shellMult),
