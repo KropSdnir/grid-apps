@@ -1167,6 +1167,35 @@ export function sliceOne(settings, widget, onupdate, ondone) {
             await processSparseInfill(0.6, 0.8);
         }
 
+        // sliceSupportHole: keep the footprint of small closed holes empty. just
+        // below a hole's mouth, the (belt skewed) projected shadow of the part
+        // underside overlaps the hole footprint and would stand a crescent of
+        // support under the opening; cut the hole footprints of the next few
+        // layers (the thin zone depth) out of the support
+        if (process.sliceSupportHole > 0 && supportDensity) {
+            let holeMax = process.sliceSupportHole;
+            let zoneLayers = Math.max(1, Math.round((process.sliceSupportThinZone || 3) / sliceHeight));
+            let minArea = lineWidth * lineWidth;
+            for (let slice of slices) {
+                let polys = (slice.supports || []).filter(p => !p.solidPlate);
+                if (!polys.length) continue;
+                let holes = [];
+                let s = slice.up;
+                for (let i = 0; i < zoneLayers && s; i++, s = s.up) {
+                    for (let top of s.topPolys() || []) {
+                        for (let hole of top.inner || []) {
+                            if (Math.abs(hole.area()) <= holeMax) holes.push(hole.clone());
+                        }
+                    }
+                }
+                if (!holes.length) continue;
+                let rest = [];
+                let plate = (slice.supports || []).filter(p => p.solidPlate);
+                POLY.subtract(polys, POLY.union(holes, 0, true), rest, null, slice.z, minArea, { wasm: false });
+                slice.supports = POLY.setZ([ ...plate, ...rest ], slice.z);
+            }
+        }
+
         // support contact zone (belt): the part of the support within a few mm of
         // the part is flagged thin and filled with short dashes (small pillars)
         // instead of full-width fins; the rest, and the base, keep the normal fill
