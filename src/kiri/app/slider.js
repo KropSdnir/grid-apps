@@ -16,6 +16,9 @@ class SliderControl {
     #sliderBar;
     #sliderBar2;
     #drag = {};
+    // end box inputs: true while the user has typed text that is not applied yet
+    #dirty = { lo: false, hi: false };
+    #repeat = { delay: undefined, timer: undefined };
 
     // Callbacks to replace event emissions
     #onLayerChange;
@@ -90,12 +93,13 @@ class SliderControl {
      */
     setMax(max) {
         this.#layerMax = max;
-        this.#slider.max.innerText = max;
+        this.#slider.loIn.max = max;
+        this.#slider.hiIn.max = max;
         if (max < this.#layerHi) {
             this.#layerHi = max;
-            this.showLabels();
             this.#updateVisuals();
         }
+        this.showLabels();
     }
 
     /**
@@ -105,7 +109,7 @@ class SliderControl {
      */
     updatePosition(startPercent, endPercent) {
         const width = this.#slider.range.clientWidth;
-        const maxval = width - this.#sliderBar2;
+        const maxval = Math.max(0, width - this.#sliderBar2);
         const start = Math.max(0, Math.min(1, startPercent));
         const end = Math.max(start, Math.min(1, endPercent));
 
@@ -122,11 +126,64 @@ class SliderControl {
      * Show layer number labels
      */
     showLabels() {
-        const digits = this.#layerMax.toString().length;
-        this.#slider.min.style.width = `${digits}em`;
-        this.#slider.max.style.width = `${digits}em`;
-        this.#slider.min.innerText = this.#layerLo;
-        this.#slider.max.innerText = this.#layerHi;
+        const digits = Math.max(2, this.#layerMax.toString().length) + 1;
+        const { loIn, hiIn, loDec, loInc, hiDec, hiInc } = this.#slider;
+        loIn.style.width = hiIn.style.width = `${digits}ch`;
+        // never overwrite text the user is still typing
+        if (!this.#dirty.lo) loIn.value = this.#layerLo;
+        if (!this.#dirty.hi) hiIn.value = this.#layerHi;
+        // the ends never cross, so a step that would cross is disabled
+        loDec.disabled = this.#layerLo <= 0;
+        loInc.disabled = this.#layerLo >= this.#layerHi;
+        hiDec.disabled = this.#layerHi <= this.#layerLo;
+        hiInc.disabled = this.#layerHi >= this.#layerMax;
+    }
+
+    /**
+     * Move one end of the range by a number of layers (used by the < > buttons and arrow keys).
+     * The ends never cross: low stays in 0..hi, high stays in lo..max.
+     * @param {'lo'|'hi'} which - Which end to move
+     * @param {number} delta - Layers to add (negative to subtract)
+     * @returns {boolean} true if the range changed
+     */
+    step(which, delta) {
+        return this.#apply(which, (which === 'lo' ? this.#layerLo : this.#layerHi) + delta, false);
+    }
+
+    /**
+     * Set one end of the range to a typed value.
+     * The value is rounded and clamped to 0..max. If it would cross the other end,
+     * the other end is pushed along so the typed number is always the one shown.
+     * @param {'lo'|'hi'} which - Which end to set
+     * @param {number} value - Requested layer
+     * @returns {boolean} true if the range changed
+     */
+    setEnd(which, value) {
+        return this.#apply(which, value, true);
+    }
+
+    #apply(which, value, push) {
+        if (!Number.isFinite(value)) {
+            this.showLabels();
+            return false;
+        }
+        value = Math.max(0, Math.min(this.#layerMax, Math.round(value)));
+        let lo = this.#layerLo;
+        let hi = this.#layerHi;
+        if (which === 'lo') {
+            if (push) hi = Math.max(hi, value);
+            lo = Math.min(value, hi);
+        } else {
+            if (push) lo = Math.min(lo, value);
+            hi = Math.max(value, lo);
+        }
+        const changed = lo !== this.#layerLo || hi !== this.#layerHi;
+        if (changed) {
+            this.setRange(lo, hi);
+        } else {
+            this.showLabels();
+        }
+        return changed;
     }
 
     /**
@@ -154,22 +211,10 @@ class SliderControl {
     }
 
     #bindEvents() {
-        // Min/Max buttons
-        this.#slider.min.onclick = () => {
-            this.#layerLo = 0;
-            this.#layerHi = 0;
-            this.showLabels();
-            this.#updateVisuals();
-            this.#notifyChange();
-        };
-
-        this.#slider.max.onclick = () => {
-            this.#layerLo = 0;
-            this.#layerHi = this.#layerMax;
-            this.showLabels();
-            this.#updateVisuals();
-            this.#notifyChange();
-        };
+        // < > buttons and editable number boxes at both ends
+        const s = this.#slider;
+        this.#bindEnd('lo', s.loDec, s.loIn, s.loInc);
+        this.#bindEnd('hi', s.hiDec, s.hiIn, s.hiInc);
 
         // Mouse hover for labels
         this.#slider.div.onmouseover = () => {
@@ -186,6 +231,115 @@ class SliderControl {
         this.#bindDrag(this.#slider.lo, this.#handleLoDrag.bind(this));
         this.#bindDrag(this.#slider.mid, this.#handleMidDrag.bind(this));
         this.#bindDrag(this.#slider.hi, this.#handleHiDrag.bind(this));
+    }
+
+    #bindEnd(which, dec, input, inc) {
+        this.#bindStepButton(which, dec, -1);
+        this.#bindStepButton(which, inc, 1);
+
+        // presses and wheel on the box must not reach the 3D view underneath
+        for (const name of ['mousedown', 'touchstart', 'wheel']) {
+            input.addEventListener(name, ev => ev.stopPropagation(), { passive: true });
+        }
+        // a focused number box would otherwise change value on wheel
+        input.addEventListener('wheel', ev => {
+            if (input.ownerDocument.activeElement === input) {
+                ev.preventDefault();
+            }
+        }, { passive: false });
+
+        const valid = txt => /^[-+]?\d+(\.\d+)?$/.test(txt);
+        const commit = () => {
+            const txt = input.value.trim();
+            this.#dirty[which] = false;
+            input.classList.remove('bad');
+            if (valid(txt)) {
+                this.setEnd(which, parseFloat(txt));
+            } else {
+                // empty or not a number: put the old value back
+                this.showLabels();
+            }
+        };
+        const revert = () => {
+            this.#dirty[which] = false;
+            input.classList.remove('bad');
+            this.showLabels();
+        };
+
+        input.addEventListener('input', () => {
+            this.#dirty[which] = true;
+            const txt = input.value.trim();
+            input.classList.toggle('bad', txt !== '' && !valid(txt));
+        });
+        input.addEventListener('change', commit);
+        input.addEventListener('blur', () => {
+            if (this.#dirty[which]) commit();
+        });
+        // click into the box selects the whole number so typing replaces it
+        let fresh = false;
+        input.addEventListener('focus', () => { fresh = true; input.select(); });
+        input.addEventListener('mouseup', ev => {
+            if (fresh) ev.preventDefault();
+            fresh = false;
+        });
+        input.addEventListener('keydown', ev => {
+            switch (ev.key) {
+                case 'Enter':
+                    ev.preventDefault();
+                    commit();
+                    input.select();
+                    break;
+                case 'Escape':
+                    ev.preventDefault();
+                    revert();
+                    input.blur();
+                    break;
+                case 'ArrowUp':
+                case 'ArrowDown':
+                    ev.preventDefault();
+                    if (this.#dirty[which]) commit();
+                    this.step(which, ev.key === 'ArrowUp' ? 1 : -1);
+                    input.select();
+                    break;
+            }
+        });
+    }
+
+    /**
+     * < / > button: one click is exactly one layer. Holding repeats after a delay.
+     */
+    #bindStepButton(which, btn, delta) {
+        const stop = () => {
+            clearTimeout(this.#repeat.delay);
+            clearInterval(this.#repeat.timer);
+            this.#repeat.delay = this.#repeat.timer = undefined;
+        };
+        btn.addEventListener('pointerdown', ev => {
+            if (ev.button !== 0) return;
+            ev.preventDefault(); // no focus change, no text selection
+            ev.stopPropagation();
+            stop();
+            // apply a half-typed value first so the step starts from what is shown
+            for (const [key, input] of [['lo', this.#slider.loIn], ['hi', this.#slider.hiIn]]) {
+                if (this.#dirty[key]) input.dispatchEvent(new Event('change'));
+            }
+            try { btn.setPointerCapture(ev.pointerId); } catch (e) { }
+            this.step(which, delta);
+            this.#repeat.delay = setTimeout(() => {
+                this.#repeat.timer = setInterval(() => {
+                    if (!this.step(which, delta)) stop();
+                }, 60);
+            }, 400);
+        });
+        btn.addEventListener('pointerup', stop);
+        btn.addEventListener('pointercancel', stop);
+        btn.addEventListener('lostpointercapture', stop);
+        btn.addEventListener('mousedown', ev => ev.stopPropagation());
+        btn.addEventListener('touchstart', ev => ev.stopPropagation(), { passive: true });
+        // keyboard activation (Enter/Space on a focused button) has no pointer press
+        btn.addEventListener('click', ev => {
+            if (ev.detail === 0) this.step(which, delta);
+        });
     }
 
     #bindDrag(el, deltaHandler) {
@@ -279,6 +433,7 @@ class SliderControl {
         this.#layerLo = Math.round(start * this.#layerMax);
         this.#layerHi = Math.round(end * this.#layerMax);
 
+        this.showLabels();
         this.#notifyChange();
     }
 

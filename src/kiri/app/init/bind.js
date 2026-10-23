@@ -103,6 +103,12 @@ export function bind() {
             mid:            $('slider-mid'),
             min:            $('slider-zero'),
             range:          $('slider-center'),
+            loDec:          $('slider-lo-dec'),
+            loIn:           $('slider-lo-in'),
+            loInc:          $('slider-lo-inc'),
+            hiDec:          $('slider-hi-dec'),
+            hiIn:           $('slider-hi-in'),
+            hiInc:          $('slider-hi-inc'),
         },
 
         loading:            $('progress-overlay')?.style,

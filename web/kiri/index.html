@@ -105,7 +105,11 @@
             <div id="layer-slider" class="f-col a-stretch">
                 <div id="layers" class="f-row j-center gap2"></div>
                 <div id="slider" class="f-row russo">
-                    <div id="slider-zero">0</div>
+                    <div id="slider-zero" class="slider-end">
+                        <button id="slider-lo-dec" class="slider-step" type="button" tabindex="-1" title="low layer -1">&lt;</button>
+                        <input id="slider-lo-in" class="slider-num" type="number" min="0" step="1" value="0" title="low layer (Enter to apply, Esc to cancel)">
+                        <button id="slider-lo-inc" class="slider-step" type="button" tabindex="-1" title="low layer +1">&gt;</button>
+                    </div>
                     <div id="slider-center" class="grow">
                         <div id="slider-line"></div>
                         <div id="slider-hold" class="f-row">
@@ -114,7 +118,11 @@
                             <div id="slider-hi" class="handle"><div id="slider-hi-val"></div></div>
                         </div>
                     </div>
-                    <div id="slider-max">&infin;</div>
+                    <div id="slider-max" class="slider-end">
+                        <button id="slider-hi-dec" class="slider-step" type="button" tabindex="-1" title="high layer -1">&lt;</button>
+                        <input id="slider-hi-in" class="slider-num" type="number" min="0" step="1" value="0" title="high layer (Enter to apply, Esc to cancel)">
+                        <button id="slider-hi-inc" class="slider-step" type="button" tabindex="-1" title="high layer +1">&gt;</button>
+                    </div>
                 </div>
             </div>
             <!-- slice/preview layer slider -->

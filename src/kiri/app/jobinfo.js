@@ -6,6 +6,7 @@ import { MODES } from './consts.js';
 import { filament } from './filament.js';
 
 const KEY = 'jobinfo';
+const SLIDER_BAND = 48; // px reserved at the bottom for the layer slider
 let box, body, sum, arrow, rows = {}, serial = 0, visible = true, last;
 
 function enabled() {
@@ -33,7 +34,8 @@ function clamp() {
     if (!box || box.style.display === 'none') return;
     const w = box.offsetWidth || 210, h = box.offsetHeight || 30;
     const x = Math.min(Math.max(0, box.offsetLeft), Math.max(0, window.innerWidth - w));
-    const y = Math.min(Math.max(0, box.offsetTop), Math.max(0, window.innerHeight - h));
+    // keep clear of the layer slider bar along the bottom edge of the viewport
+    const y = Math.min(Math.max(0, box.offsetTop), Math.max(0, window.innerHeight - h - SLIDER_BAND));
     box.style.left = x + 'px';
     box.style.top = y + 'px';
 }
