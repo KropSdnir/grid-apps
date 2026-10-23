@@ -1231,14 +1231,25 @@ function dash_lines(fill, len, period, phase) {
         const c0 = alongY ? a.y - phase : a.x;
         const dc = alongY ? dy : dx;
         const lo = Math.min(c0, c0 + dc), hi = Math.max(c0, c0 + dc);
-        for (let k = Math.floor(lo / period); k * period <= hi; k++) {
-            const s = Math.max(lo, k * period), e = Math.min(hi, k * period + len);
-            if (e - s < len * 0.5) continue;
+        const emit = (s, e) => {
             const t0 = (s - c0) / dc, t1 = (e - c0) / dc;
             const p1 = a.clone(), p2 = a.clone();
             p1.x = a.x + dx * t0; p1.y = a.y + dy * t0;
             p2.x = a.x + dx * t1; p2.y = a.y + dy * t1;
             out.push(p1, p2);
+        };
+        let kept = 0;
+        for (let k = Math.floor(lo / period); k * period <= hi; k++) {
+            const s = Math.max(lo, k * period), e = Math.min(hi, k * period + len);
+            if (e - s < len * 0.5) continue;
+            emit(s, e);
+            kept++;
+        }
+        // a line shorter than half a dash, or one that falls between grid slots,
+        // must not vanish (the support would have a hole): one dash, centered
+        if (!kept) {
+            const mid = (lo + hi) / 2, half = Math.min(hi - lo, len) / 2;
+            emit(mid - half, mid + half);
         }
     }
     out.forEach((p, i) => { p.index = (i / 2) | 0; });
@@ -2006,12 +2017,41 @@ function supportPolyFill({ promises, polys, lineWidth, density, z, isBelt, angle
                 // drop fill lines shorter than this (mm): removes scraps at polygon edges
                 minLen: minLine > 0 && !tieLayer && !poly.solidPlate ? minLine : undefined
             });
-            // edge fins: one fill line flush with each side of the region, so the
-            // outermost column sits on the support edge instead of up to a grid
-            // step inside it. started from the polygon bounds, not the global grid
+            // a small region can fall between the grid lines and get no fill at all
+            // (a belt support region ends in a few mm of narrow column): give it one
+            // pillar along its center line so the support does not stop short
+            if (thin && !poly.fill.length) {
+                let ang = (angle || auto) % 1000;
+                let vert = Math.abs(Math.abs(ang) - 90) < 1;
+                if (vert || Math.abs(ang) < 1) {
+                    for (let ip of inset) {
+                        let b = ip.bounds.clone();
+                        // the first scan line sits on the start edge of the bounds
+                        if (vert) { if (ang > 0) b.maxx = (b.minx + b.maxx) / 2; else b.minx = (b.minx + b.maxx) / 2; }
+                        else b.miny = (b.miny + b.maxy) / 2;
+                        let saved = ip._bounds;
+                        let spacing1 = Math.max(b.width(), b.height()) * 2 + 10;
+                        ip._bounds = b;
+                        let extra = [];
+                        areaFill({
+                            angle: ang,
+                            output: extra,
+                            polys: [ ip ],
+                            spacing: spacing1
+                        });
+                        ip._bounds = saved;
+                        for (let i = 0; i + 1 < extra.length; i += 2) {
+                            poly.fill.push(extra[i], extra[i + 1]);
+                        }
+                    }
+                }
+            }
+            // thin (contact zone) support: short dashes on a fixed grid, vertical pillars
             if (thin && poly.fill.length) {
                 poly.fill = dash_lines(poly.fill, thinLen, thinLen + Math.max(spacing - lineWidth, 1), phase || 0);
             }
+            // edge fins: one fill line flush with each side of the region, so the
+            // outermost column sits on the support edge instead of up to a grid step inside it
             if (edge && !poly.solidPlate && !poly.thinSupport && !tieLayer && !promises && isBelt) {
                 let shrink = lineWidth * 0.3;
                 for (let ip of inset) {
