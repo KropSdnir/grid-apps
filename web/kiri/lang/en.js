@@ -522,6 +522,8 @@ self.lang['en-us'] = {
     sp_mina_l:      ["drop support columns whose","largest cross section is","smaller than this, in mm^2"],
     sp_minp_s:      "min area %",
     sp_minp_l:      ["drop support columns whose largest cross","section is smaller than this percent of","the largest support column on the model","scales with model size","0 to disable"],
+    sp_hole_s:      "hole bridge",
+    sp_hole_l:      ["do not support the roof of a closed","hole smaller than this area, in mm^2:","it is bridged instead, so no pillars","stand inside round holes and tubes","0 to disable"],
     sp_flow_s:      "support flow",
     sp_flow_l:      ["extrusion multiplier for support lines","0 = use the fill multiplier"],
     sp_xpnd_s:      "expand",

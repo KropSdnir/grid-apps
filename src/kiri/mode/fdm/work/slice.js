@@ -505,6 +505,7 @@ export function sliceOne(settings, widget, onupdate, ondone) {
         let indices = stack.map(s => s.z);
         let zAngNorm = Math.sin(process.sliceSupportAngle * Math.PI / 180);
         let manual = process.sliceSupportType === 'manual';
+        let holeMax = process.sliceSupportHole || 0;
 
         // sort bottom up so shadows do not accumulate
         // since that is done later and clipped to slice.clips
@@ -526,6 +527,22 @@ export function sliceOne(settings, widget, onupdate, ondone) {
                 let bot = slice.topPolys();
                 let bridge = [];
                 POLY.subtract(top, bot, bridge, undefined, slice.z, 0, { wasm: true });
+                // sliceSupportHole: the roof of a small closed hole (a hole in this
+                // layer that the layer above covers) is bridged, not supported. cut
+                // the hole areas out of the overhang so no shadow starts there
+                if (holeMax > 0 && bridge.length) {
+                    let holes = [];
+                    for (let poly of bot) {
+                        for (let hole of poly.inner || []) {
+                            if (Math.abs(hole.area()) <= holeMax) holes.push(hole.clone());
+                        }
+                    }
+                    if (holes.length) {
+                        let rest = [];
+                        POLY.subtract(bridge, holes, rest, undefined, slice.z, lineWidth * lineWidth, { wasm: false });
+                        bridge = rest;
+                    }
+                }
                 slice.shadow = POLY.trimTo(slice.shadow, bridge, { minArea: 0 });
             }
         }

@@ -364,6 +364,7 @@ export const conf = {
                 beltPedestalBase: 0,
                 sliceSupportMinArea: 0,
                 sliceSupportMinAreaPct: 0,
+                sliceSupportHole: 0,
                 outputSupportMult: 0,
                 sliceSupportSpacing: 0,
                 sliceSupportMinLine: 0,
