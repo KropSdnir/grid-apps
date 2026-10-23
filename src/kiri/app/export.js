@@ -26,6 +26,33 @@ function localSet(key, val) {
 }
 
 /**
+ * FDM file name (without extension): the first model's file name as loaded,
+ * a space, the nozzle temperature, a space, the bed temperature, for example
+ * "L2_Holder_1 220 80". Spaces, dots and punctuation in the model name are kept;
+ * only the real extension (a dot plus 1-5 letters or digits with at least one
+ * letter, like .stl or .3mf, so the ".4" in "v12.2-12.4" stays) and characters
+ * illegal in file names are removed. Numbering "(1)" for names already on the
+ * printer is added at send time by uniqueRemoteName().
+ * Temperatures are the process outputTemp and outputBedTemp (not the first-layer
+ * overrides), rounded to whole numbers; a missing temperature is left out.
+ * @param {object} [settings] - current settings (defaults to api.conf.get())
+ * @returns {string} file name without extension
+ */
+export function fdmFileBase(settings) {
+    const proc = (settings || api.conf.get()).process || {};
+    const model = (api.widgets.all().map(w => w.meta && w.meta.file).filter(v => v)[0] || 'print')
+        .replace(/\.(?=[A-Za-z0-9]{0,4}[A-Za-z])[A-Za-z0-9]{1,5}$/, '')
+        .replace(/[\\/:*?"<>|]/g, '')
+        .trim();
+    const parts = [ model || 'print' ];
+    for (const key of [ 'outputTemp', 'outputBedTemp' ]) {
+        const t = Math.round(parseFloat(proc[key]));
+        if (isFinite(t)) parts.push(t);
+    }
+    return parts.join(' ');
+}
+
+/**
  * Reduce whatever was typed or pasted (a Fluidd/Mainsail page address with a
  * path, query or hash) to the bare printer address, e.g. http://192.168.1.8
  * @param {string} host
@@ -60,6 +87,54 @@ export function quickQueue() {
     quickSend('queue');
 }
 
+/**
+ * Pick a file name that does not exist on the printer yet: "base.ext", else
+ * "base (1).ext", "base (2).ext", ... (lowest free number, case-insensitive).
+ * Only reads from the printer: Moonraker GET /server/files/list?root=gcodes,
+ * OctoPrint GET /api/files/local. When the list cannot be read the plain name
+ * is returned with `failed` set to the reason (the print is not blocked).
+ * @param {string} host - printer origin
+ * @param {string} type - 'moonraker' or anything else for OctoPrint
+ * @param {object} headers - request headers (API key, proxy host)
+ * @param {string} base - file name without extension
+ * @param {string} ext - file extension without dot
+ * @returns {Promise<{name: string, failed?: string}>}
+ */
+async function uniqueRemoteName(host, type, headers, base, ext) {
+    const plain = `${base}.${ext}`;
+    let taken;
+    try {
+        const r = await fetch(host + (type === 'moonraker' ? '/server/files/list?root=gcodes' : '/api/files/local'), { headers });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const j = await r.json();
+        const list = type === 'moonraker'
+            ? (Array.isArray(j.result) ? j.result : []).map(f => f.path || f.filename)
+            : (j.files || []).map(f => f.path || f.name);
+        taken = new Set(list.filter(v => typeof v === 'string').map(v => v.toLowerCase()));
+    } catch (e) {
+        return { name: plain, failed: e.message || String(e) };
+    }
+    let name = plain, n = 0;
+    while (taken.has(name.toLowerCase())) name = `${base} (${++n}).${ext}`;
+    return { name };
+}
+
+/**
+ * Readable text for a failed upload. Moonraker answers 409 when the same file
+ * name is loaded or printing right now (only reachable when the file list could
+ * not be read or another upload raced this one).
+ * @param {Response} r
+ * @param {string} filename
+ * @returns {Promise<string>}
+ */
+async function uploadError(r, filename) {
+    const body = (await r.text()).slice(0, 200);
+    if (r.status !== 409) return `${r.status} ${body}`;
+    let msg = body;
+    try { msg = JSON.parse(body).error.message || body } catch (e) { }
+    return `409 ${msg} (a file named "${filename}" is probably printing right now; try again)`;
+}
+
 function quickSend(mode) {
     const queue = mode === 'queue';
     if (api.mode.get_id() !== MODES.FDM) {
@@ -83,11 +158,14 @@ function quickSend(mode) {
         api.show.alert("printer address must begin with 'https' on a secure site");
         return;
     }
-    api.function.export((gcode, info) => {
-        const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(2, 12);
-        const base = (api.widgets.all().map(w => w.meta && w.meta.file).filter(v => v)[0] || 'print')
-            .replace(/\.[^.]*$/, '').replace(/[^\w.-]+/g, '-').substring(0, 30);
-        const filename = `${base}-${stamp}.gcode`;
+    api.function.export(async (gcode, info) => {
+        const settings = api.conf.get();
+        const headers = apik ? { 'X-Api-Key': apik } : {};
+        // never overwrite: ask the printer which names exist (read only) and take the first free one
+        const found = await uniqueRemoteName(host, type, headers,
+            fdmFileBase(settings), settings.device.gcodeFExt || 'gcode');
+        const filename = found.name;
+        const note = found.failed ? ` (printer file list unavailable: ${found.failed}; name not checked, may overwrite)` : '';
         if (!queue && localGet('print-confirm') !== 'off' &&
             !window.confirm(`Upload ${filename} and START PRINTING on ${host}?`)) {
             return;
@@ -96,14 +174,13 @@ function quickSend(mode) {
         form.append('file', new Blob([gcode + '\r\n'], { type: 'application/octet-stream' }), filename);
         if (!queue) form.append('print', 'true');
         const url = host + (type === 'moonraker' ? '/server/files/upload' : '/api/files/local');
-        const headers = apik ? { 'X-Api-Key': apik } : {};
         api.show.progress(0.5, 'sending to printer');
         fetch(url, { method: 'POST', headers, body: form })
             .then(async r => {
                 api.show.progress(0);
-                if (!r.ok) throw new Error(`${r.status} ${(await r.text()).slice(0, 200)}`);
+                if (!r.ok) throw new Error(await uploadError(r, filename));
                 if (!queue) {
-                    api.show.alert(`printing ${filename}`, 5);
+                    api.show.alert(`printing ${filename}${note}`, found.failed ? 8 : 5);
                     return;
                 }
                 // add the uploaded file to the printer's job queue
@@ -115,7 +192,7 @@ function quickSend(mode) {
                 if (!q.ok) throw new Error(`queue ${q.status} ${(await q.text()).slice(0, 200)}`);
                 const st = (await q.json()).result || {};
                 const n = (st.queued_jobs || []).length;
-                api.show.alert(`queued ${filename} (${n} in queue, queue ${st.queue_state || 'unknown'})`, 8);
+                api.show.alert(`queued ${filename} (${n} in queue, queue ${st.queue_state || 'unknown'})${note}`, 8);
             })
             .catch(err => {
                 api.show.progress(0);
@@ -325,7 +402,8 @@ function exportGCodeDialog(gcode, sections, info, names) {
     let settings = api.conf.get(),
         MODE = api.mode.get_id(),
         name = names[0] || (MODE === MODES.CAM ? "cnc" : "print"),
-        pre = `${name}-${(printSeq.toString().padStart(3,"0"))}`,
+        // FDM: "<model name> <nozzle> <bed>" (no sequence number); other modes keep name-sequence
+        pre = MODE === MODES.FDM ? fdmFileBase(settings) : `${name}-${(printSeq.toString().padStart(3,"0"))}`,
         filename = pre,// + (new Date().getTime().toString(36)),
         fileext = settings.device.gcodeFExt || "gcode",
         codeproc = settings.device.gcodeProc,
@@ -381,7 +459,15 @@ function exportGCodeDialog(gcode, sections, info, names) {
             host = 'http://127.0.0.1:5309';
         }
 
-        filename = $('print-filename').value + "." + fileext;
+        // never overwrite: number the name ("name (1).gcode") when the printer already has it
+        const rheaders = {};
+        if (proxy) rheaders["X-Host"] = proxy;
+        if (apik) rheaders["X-Api-Key"] = apik;
+        uniqueRemoteName(host, type, rheaders, $('print-filename').value, fileext).then(found => {
+        filename = found.name;
+        if (found.failed) {
+            api.show.alert(`printer file list unavailable (${found.failed}); name not checked, may overwrite`, 5);
+        }
         form.append("file", getBlob(), filename);
         // start the print in the same request so it only starts after a good upload
         if (start) form.append("print", "true");
@@ -415,6 +501,7 @@ function exportGCodeDialog(gcode, sections, info, names) {
             ajax.setRequestHeader("X-Api-Key", apik);
         }
         ajax.send(form);
+        });
     }
 
     function download() {
