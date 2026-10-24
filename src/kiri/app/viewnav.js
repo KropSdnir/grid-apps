@@ -119,6 +119,13 @@ function snap(name) {
     space().view.panTo(t.x, t.y, t.z, v[0] * DEG, phi, 220);
 }
 
+/** FreeCAD-style home: isometric (front right top, azimuth 45, elevation 35.264) and fit the contents in view.
+ *  Projection (perspective / ortho) stays as the user has it; Kiri's own View > home is not used. */
+function home() {
+    const iso = VIEWS.iso;
+    space().view.fit(undefined, { left: iso[0] * DEG, up: (90 - iso[1]) * DEG, time: 300 });
+}
+
 function setProjection(ortho) {
     const conf = api.conf.get();
     if (conf && conf.controller) conf.controller.ortho = ortho;
@@ -151,7 +158,7 @@ function act(name, ev) {
         case 'zoom-in':     dolly(-d); break;
         case 'zoom-out':    dolly(d); break;
         case 'fit':         space().view.fit(); break;
-        case 'home':        space().view.home(); break;
+        case 'home':        home(); break;
         case 'proj':        setProjection(!space().view.getProjection().startsWith('o')); break;
     }
 }
