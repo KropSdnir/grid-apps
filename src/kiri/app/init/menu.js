@@ -161,6 +161,7 @@ function content(actions) {
                     menuItem(actions, { id: 'view-home', lk: 'home', text: 'home', iconClass: 'fas fa-home' }),
                     menuItem(actions, { id: 'view-top', lk: 'top', text: 'top', iconClass: 'fas fa-square' }),
                     menuItem(actions, { id: 'view-jobinfo', lk: 'jobinfo', text: 'job info', iconClass: 'fas fa-eye' }),
+                    menuItem(actions, { id: 'view-navigator', lk: 'navigator', text: 'view navigator', iconClass: 'fas fa-eye' }),
                     hr(),
                     menuItem(actions, { id: 'app-xpnd', lk: 'fullscreen', text: 'fullscreen', iconClass: 'fas fa-maximize' })
                 ]

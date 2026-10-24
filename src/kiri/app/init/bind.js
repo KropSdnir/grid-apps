@@ -94,6 +94,20 @@ export function bind() {
         settingsName:       $('settingsName'),
         settingsSave:       $('settingsSave'),
 
+        nav: {
+            root:           $('view-nav'),
+            body:           $('vn-body'),
+            fold:           $('vn-fold'),
+            cube:           $('vn-cube'),
+            proj:           $('vn-proj'),
+            step:           $('vn-step'),
+            stepPre:        $('vn-step-pre'),
+            dstep:          $('vn-dstep'),
+            dstepPre:       $('vn-dstep-pre'),
+            az:             $('vn-az'),
+            el:             $('vn-el'),
+            dist:           $('vn-dist')
+        },
         slider: {
             div:            $('slider'),
             hi:             $('slider-hi'),

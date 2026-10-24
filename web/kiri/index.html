@@ -189,6 +189,68 @@
     <!-- ThreeJS container -->
     <div id="container"></div>
 
+    <!-- view navigator overlay: cube, orbit/pan/zoom steps, exact angles (src/kiri/app/viewnav.js) -->
+    <div id="view-nav" tabindex="0" style="display:none" title="view navigator&#13;arrow keys orbit while this box has focus (Alt = pan)&#13;Shift = step / 10, Ctrl = step x 10">
+        <div id="vn-bar">
+            <button id="vn-fold" class="vn-btn" type="button" tabindex="-1" title="collapse / expand"><span id="vn-fold-ico">&#9660;</span><span id="vn-fold-txt">view</span></button>
+        </div>
+        <div id="vn-body">
+            <div class="vn-top">
+                <div id="vn-cubewrap">
+                    <div id="vn-cube">
+                        <div class="vn-face vn-f" data-view="front" title="front">FRONT</div>
+                        <div class="vn-face vn-b" data-view="back" title="back">BACK</div>
+                        <div class="vn-face vn-r" data-view="right" title="right">RIGHT</div>
+                        <div class="vn-face vn-l" data-view="left" title="left">LEFT</div>
+                        <div class="vn-face vn-t" data-view="top" title="top">TOP</div>
+                        <div class="vn-face vn-d" data-view="bottom" title="bottom">BOTTOM</div>
+                    </div>
+                </div>
+                <div class="vn-pad" id="vn-orbit">
+                    <span></span><button class="vn-btn" type="button" tabindex="-1" data-act="orbit-up" title="orbit up (model turns up, camera goes lower)&#13;hold to repeat">&#9650;</button><span></span>
+                    <button class="vn-btn" type="button" tabindex="-1" data-act="orbit-left" title="orbit left (model turns left)&#13;hold to repeat">&#9664;</button><span class="vn-padlbl">orbit</span><button class="vn-btn" type="button" tabindex="-1" data-act="orbit-right" title="orbit right (model turns right)&#13;hold to repeat">&#9654;</button>
+                    <span></span><button class="vn-btn" type="button" tabindex="-1" data-act="orbit-down" title="orbit down (model turns down, camera goes higher)&#13;hold to repeat">&#9660;</button><span></span>
+                </div>
+                <div class="vn-pad" id="vn-pan">
+                    <span></span><button class="vn-btn" type="button" tabindex="-1" data-act="pan-up" title="pan: model moves up on screen&#13;hold to repeat">&#9650;</button><span></span>
+                    <button class="vn-btn" type="button" tabindex="-1" data-act="pan-left" title="pan: model moves left on screen&#13;hold to repeat">&#9664;</button><span class="vn-padlbl">pan</span><button class="vn-btn" type="button" tabindex="-1" data-act="pan-right" title="pan: model moves right on screen&#13;hold to repeat">&#9654;</button>
+                    <span></span><button class="vn-btn" type="button" tabindex="-1" data-act="pan-down" title="pan: model moves down on screen&#13;hold to repeat">&#9660;</button><span></span>
+                </div>
+            </div>
+            <div class="vn-grid">
+                <button class="vn-btn" type="button" tabindex="-1" data-view="front" title="front view">front</button>
+                <button class="vn-btn" type="button" tabindex="-1" data-view="back" title="back view">back</button>
+                <button class="vn-btn" type="button" tabindex="-1" data-view="left" title="left view">left</button>
+                <button class="vn-btn" type="button" tabindex="-1" data-view="right" title="right view">right</button>
+                <button class="vn-btn" type="button" tabindex="-1" data-view="top" title="top view">top</button>
+                <button class="vn-btn" type="button" tabindex="-1" data-view="bottom" title="bottom view">bottom</button>
+                <button class="vn-btn" type="button" tabindex="-1" data-view="iso" title="isometric view (front right top)">iso</button>
+                <button class="vn-btn" type="button" tabindex="-1" id="vn-proj" data-act="proj" title="switch between perspective and orthographic projection">persp</button>
+                <button class="vn-btn" type="button" tabindex="-1" data-act="fit" title="fit all contents (same as View > contents)">fit</button>
+                <button class="vn-btn" type="button" tabindex="-1" data-act="home" title="home view (same as View > home)">home</button>
+                <button class="vn-btn" type="button" tabindex="-1" data-act="zoom-out" title="zoom out by the move step&#13;hold to repeat">zoom &minus;</button>
+                <button class="vn-btn" type="button" tabindex="-1" data-act="zoom-in" title="zoom in by the move step&#13;hold to repeat">zoom +</button>
+            </div>
+            <div class="vn-row">
+                <label for="vn-step">angle step</label>
+                <input id="vn-step" class="vn-num" type="number" step="any" min="0.001" max="90" value="1" title="degrees per orbit click (0.001 to 90)">
+                <span>&deg;</span>
+                <select id="vn-step-pre" title="preset angle steps"></select>
+            </div>
+            <div class="vn-row">
+                <label for="vn-dstep">move step</label>
+                <input id="vn-dstep" class="vn-num" type="number" step="any" min="0.001" value="5" title="mm per zoom or pan click">
+                <span>mm</span>
+                <select id="vn-dstep-pre" title="preset move steps"></select>
+            </div>
+            <div class="vn-read">
+                <label>azimuth &deg;<input id="vn-az" class="vn-num" type="number" step="any" title="azimuth in degrees: 0 front, 90 right, 180 back, -90 left (Enter to apply)"></label>
+                <label>elevation &deg;<input id="vn-el" class="vn-num" type="number" step="any" title="elevation in degrees: 0 level, 90 top, -90 bottom (Enter to apply)"></label>
+                <label>distance mm<input id="vn-dist" class="vn-num" type="number" step="any" title="camera distance to the focal point in mm (Enter to apply)"></label>
+            </div>
+        </div>
+    </div>
+
     <!-- modal dialogs-->
     <div id="modal">
         <div id="modal-box" class="f-col">
