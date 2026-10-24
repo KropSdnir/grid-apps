@@ -982,6 +982,13 @@ export function sliceOne(settings, widget, onupdate, ondone) {
         profileStart("support-fill");
         let promises = false && isConcurrent ? [] : undefined;
         let div = divide(plo, phi, promises ? [ 0.8, 0.2 ] : [ 1 ]);
+        let colCfg = columnsMode ? columnsConfig(process) : null;
+        if (colCfg) {
+            colCfg.shear = widget.belt && process.sliceSupportVertical === 2 ? widget.belt.slope : 0;
+            if (colCfg.style === 'pillars') {
+                colCfg.grids = planPillarGrids(slices, colCfg, lineWidth);
+            }
+        }
         forSlices(div[0].lo, div[0].hi, slice => {
             let params = slice.params || process;
             let density = params.sliceSupportDensity;
@@ -995,7 +1002,7 @@ export function sliceOne(settings, widget, onupdate, ondone) {
                 thinLen: process.sliceSupportThin || 0,
                 flush: process.sliceSupportFlush || 0,
                 finGap: process.sliceSupportFinGap || 0,
-                columns: columnsMode ? columnsConfig(process) : null,
+                columns: colCfg,
                 // pillars stay vertical in the world: the fill grid follows the belt skew
                 phase: widget.belt ? slice.z * widget.belt.slope : 0,
                 isBelt,
@@ -2214,16 +2221,75 @@ function supportPolyFill({ promises, polys, lineWidth, density, z, isBelt, angle
  * Settings for the belt 'columns' support mode
  */
 function columnsConfig(process) {
-    let mode = process.sliceSupportColMode || 'percent';
+    let mode = process.sliceSupportColMode || 'mm';
     return {
         mode,
-        space: process.sliceSupportColSpace > 0 ? process.sliceSupportColSpace : (mode === 'count' ? 6 : mode === 'mm' ? 6 : 20),
-        base: process.sliceSupportColBase > 0 ? process.sliceSupportColBase : (mode === 'mm' ? 4 : 60),
-        top: process.sliceSupportColTop > 0 ? process.sliceSupportColTop : (mode === 'mm' ? 2 : 33),
+        // clear gap between neighbouring column faces (percent: of the region width,
+        // mm, count: the number of columns)
+        space: process.sliceSupportColSpace > 0 ? process.sliceSupportColSpace : (mode === 'count' ? 5 : mode === 'mm' ? 10 : 25),
+        // base and top column width (percent: of the region size, mm, count mode: mm)
+        base: process.sliceSupportColBase > 0 ? process.sliceSupportColBase : (mode === 'percent' ? 11 : 3.4),
+        top: process.sliceSupportColTop > 0 ? process.sliceSupportColTop : (mode === 'percent' ? 6 : 1.9),
         shells: Math.max(1, Math.round(process.sliceSupportColShells || 1)),
         fill: Math.max(0, Math.min(100, process.sliceSupportColFill || 0)),
-        flush: process.sliceSupportFlush || 0
+        flush: process.sliceSupportFlush || 0,
+        // style 'pillars': a grid of separate pillars instead of continuous ribs
+        style: process.sliceSupportColStyle === 'pillars' ? 'pillars' : 'ribs',
+        // pillars: clear gap along the belt, same unit rule as the column gap
+        rowGap: process.sliceSupportColGap > 0 ? process.sliceSupportColGap : (mode === 'count' ? 4 : mode === 'mm' ? 10 : 25),
+        // pillars: length of a base pillar along the belt in mm (0 = as wide as its column)
+        pillarLen: process.sliceSupportPillarLen > 0 ? process.sliceSupportPillarLen : 0,
+        // rim line zone (ribs and pillars): 0 off, 1 contact (thin) zone only, 2 everywhere
+        rim: process.sliceSupportColRim === undefined || process.sliceSupportColRim === null ? 1 : Math.max(0, Math.min(2, Math.round(process.sliceSupportColRim))),
+        // rim line: 'continuous', 'perforated' (about 10 mm lines with 2 mm gaps, breaks off in pieces) or 'off'
+        rimStyle: process.sliceSupportRimStyle === 'perforated' ? 'perforated' : process.sliceSupportRimStyle === 'off' ? 'off' : 'continuous',
+        // vertical support moves sideways with the layers: u = y + shear * z stays constant along a pillar
+        shear: 0,
+        grids: null
     };
+}
+
+/**
+ * Column layout along one axis. Widths are independent of the gap: the number of
+ * columns follows from the size, the gap and the width (the gap is the largest clear
+ * gap wanted), the outer columns are flush with the ends and the pitch is adjusted
+ * evenly (the clear gap is pitch - width).
+ *
+ * @param {number} extent size along the axis (mm)
+ * @param {number} gap wanted clear gap (mm)
+ * @param {number} wb base width (mm)
+ * @param {number} wt top width (mm)
+ * @param {number} count fixed number of columns (0 = from the gap)
+ */
+function layoutAxis(extent, gap, wb, wt, count, lw) {
+    wb = Math.max(lw, wb);
+    wt = Math.max(lw, Math.min(wt, wb));
+    if (!(extent > 2 * wb + lw)) return { n: 1, pitch: 0, wb: Math.max(lw, extent), wt: Math.max(lw, extent) };
+    // the gap is an upper bound for the clear gap between the TOP faces (the contact): as
+    // many columns as needed to keep it at or under the wanted gap
+    let n = count > 0 ? Math.max(2, Math.round(count)) : Math.max(2, Math.ceil((extent - wb) / (wt + gap) - 1e-6) + 1);
+    let pitch = (extent - wb) / (n - 1);
+    // columns closer than their width would merge: fewer columns
+    while (n > 2 && pitch < wb * 1.15) { n--; pitch = (extent - wb) / (n - 1); }
+    wb = Math.min(wb, pitch * 0.95);
+    wt = Math.min(wt, wb);
+    return { n, pitch, wb, wt };
+}
+
+/**
+ * Gap, widths and count for a region size in the chosen unit (columns across: the
+ * gap is cfg.space, rows along the belt: cfg.rowGap)
+ */
+function axisParams(cfg, extent, gapValue) {
+    if (cfg.mode === 'percent') {
+        // widths above a quarter of the region would leave no gap: values from before the
+        // widths became independent of the spacing (60 / 33 %) end up capped
+        return { gap: gapValue / 100 * extent, wb: Math.min(cfg.base, 25) / 100 * extent, wt: Math.min(cfg.top, 15) / 100 * extent, count: 0 };
+    }
+    if (cfg.mode === 'count') {
+        return { gap: 0, wb: cfg.base, wt: cfg.top, count: gapValue };
+    }
+    return { gap: gapValue, wb: cfg.base, wt: cfg.top, count: 0 };
 }
 
 /**
@@ -2233,7 +2299,7 @@ function columnsConfig(process) {
  *
  * Each polygon gets .colRegion = { minx, maxx, count, pitch, centers, base }
  */
-function assignColumnRegions(polys, cfg, lineWidth) {
+function groupSupportPolys(polys) {
     let list = polys.filter(p => !p.solidPlate && p.points.length >= 3);
     let parent = list.map((p, i) => i);
     let find = i => { while (parent[i] !== i) i = parent[i] = parent[parent[i]]; return i; };
@@ -2252,52 +2318,24 @@ function assignColumnRegions(polys, cfg, lineWidth) {
         if (!groups.has(r)) groups.set(r, []);
         groups.get(r).push(p);
     });
-    for (let members of groups.values()) {
+    return [ ...groups.values() ];
+}
+
+function assignColumnRegions(polys, cfg, lineWidth) {
+    for (let members of groupSupportPolys(polys)) {
         let minx = Infinity, maxx = -Infinity;
         for (let p of members) {
             minx = Math.min(minx, p.bounds.minx);
             maxx = Math.max(maxx, p.bounds.maxx);
         }
-        let flush = cfg.flush;
-        let x0 = minx + flush, x1 = maxx - flush;
+        let x0 = minx + cfg.flush, x1 = maxx - cfg.flush;
         let extent = x1 - x0;
-        let region = { minx: x0, maxx: x1, count: 1, pitch: 0, centers: [ (x0 + x1) / 2 ], base: extent };
-        // widths and count by unit
-        let mode = cfg.mode;
-        let count, widthBase;
-        if (mode === 'count') {
-            count = Math.max(2, Math.round(cfg.space));
-        } else if (mode === 'mm') {
-            count = Math.max(2, Math.round(extent / Math.max(cfg.space, 0.5)) + 1);
-        } else {
-            count = Math.max(2, Math.round(extent / Math.max(extent * cfg.space / 100, 0.5)) + 1);
-        }
-        // approximate base width first (needed for the edge centers)
-        let guessPitch = extent / (count - 1);
-        widthBase = mode === 'mm' ? cfg.base : cfg.base / 100 * guessPitch;
-        widthBase = Math.max(lineWidth, widthBase);
-        // too small for two columns: one column across the whole region
-        if (extent <= 2 * widthBase + lineWidth) {
-            region.count = 1;
-            region.base = extent;
-        } else {
-            let c0 = x0 + widthBase / 2, c1 = x1 - widthBase / 2;
-            let pitch = (c1 - c0) / (count - 1);
-            // columns closer than their width would merge: fewer columns
-            while (count > 2 && pitch < widthBase * 1.15) {
-                count--;
-                pitch = (c1 - c0) / (count - 1);
-            }
-            let wb = mode === 'mm' ? cfg.base : cfg.base / 100 * pitch;
-            wb = Math.max(lineWidth, Math.min(wb, pitch * 0.95));
-            c0 = x0 + wb / 2;
-            c1 = x1 - wb / 2;
-            pitch = (c1 - c0) / (count - 1);
-            region.count = count;
-            region.pitch = pitch;
-            region.base = wb;
+        let ap = axisParams(cfg, extent, cfg.space);
+        let lay = layoutAxis(extent, ap.gap, ap.wb, ap.wt, ap.count, lineWidth);
+        let region = { minx: x0, maxx: x1, count: lay.n, pitch: lay.pitch, base: lay.wb, top: lay.wt, centers: [ (x0 + x1) / 2 ] };
+        if (lay.n > 1) {
             region.centers = [];
-            for (let i = 0; i < count; i++) region.centers.push(c0 + pitch * i);
+            for (let i = 0; i < lay.n; i++) region.centers.push(x0 + lay.wb / 2 + lay.pitch * i);
         }
         for (let p of members) p.colRegion = region;
     }
@@ -2313,6 +2351,9 @@ function assignColumnRegions(polys, cfg, lineWidth) {
  */
 function supportColumnFill(poly, cfg, z, lineWidth, tieLayer, tieSpacing) {
     let region = poly.colRegion;
+    if (cfg.style === 'pillars' && cfg.grids) {
+        return supportPillarFill(poly, cfg, z, lineWidth, tieLayer, tieSpacing);
+    }
     let out = [];
     let idx = 0;
     let pair = (a, b) => {
@@ -2345,16 +2386,8 @@ function supportColumnFill(poly, cfg, z, lineWidth, tieLayer, tieSpacing) {
         let last = i === region.count - 1;
         let first = i === 0;
         // width of this column here: base (wide) or top (thin) in mm
-        let pitch = region.pitch || region.base;
-        let w;
-        if (region.count === 1) {
-            w = region.base;
-        } else if (cfg.mode === 'mm') {
-            w = thin ? cfg.top : cfg.base;
-        } else {
-            w = (thin ? cfg.top : cfg.base) / 100 * pitch;
-        }
-        w = Math.max(lw, Math.min(w, region.count === 1 ? w : pitch * 0.95));
+        let w = region.count === 1 ? region.base : (thin ? region.top : region.base);
+        w = Math.max(lw, w);
         let x0, x1;
         if (region.count === 1) {
             x0 = region.minx; x1 = region.maxx;
@@ -2379,7 +2412,7 @@ function supportColumnFill(poly, cfg, z, lineWidth, tieLayer, tieSpacing) {
                 let core = POLY.offset([ shape.clone(true) ], -lw / 2, o) || [];
                 if (!core.length) core = [ shape ];
                 let span = Math.max(0, width - lw);
-                let n = span < lw * 0.3 ? 1 : Math.ceil(span / step - 0.05) + 1;
+                let n = span < lw * 0.3 ? 1 : Math.ceil(span / lw - 0.02) + 1;
                 for (let k = 0; k < n; k++) {
                     let x = n === 1 ? (x0 + x1) / 2 : x0 + lw / 2 + 0.02 + (span - 0.04) * k / (n - 1);
                     for (let ip of core) {
@@ -2424,9 +2457,209 @@ function supportColumnFill(poly, cfg, z, lineWidth, tieLayer, tieSpacing) {
     // flush edge: the continuous rim line along the region footprint (replaces the
     // outer wall of the edge columns), so the underside outline is covered between
     // the columns too
-    if (cfg.flush > 0) {
+    if (cfg.flush > 0 && cfg.rimStyle !== 'off' && (cfg.rim === 2 || (cfg.rim === 1 && thin))) {
         poly.fill = out;
-        supportFlushRim(poly, z, lineWidth, cfg.flush);
+        supportFlushRim(poly, z, lineWidth, cfg.flush, cfg.rimStyle === 'perforated');
+        return poly.fill;
+    }
+    return out;
+}
+
+/**
+ * Pillars: lay out one grid per underside (roof) region. The roof is the overhang
+ * shadow of a layer (at least 60 mm2); its extent across (x) and along the belt (u =
+ * y + shear * z, constant along a vertical pillar) gives the columns and the rows,
+ * the outer ones flush with the roof ends. A support polygon on any layer is then
+ * filled with the pillars of the grids it overlaps.
+ */
+function planPillarGrids(slices, cfg, lw) {
+    let grids = [];
+    for (let slice of slices) {
+        for (let p of slice.shadow || []) {
+            if (Math.abs(p.area()) < 60) continue;
+            let b = p.bounds;
+            let g = { x0: b.minx, x1: b.maxx, u0: b.miny + cfg.shear * slice.z, u1: b.maxy + cfg.shear * slice.z };
+            let same = grids.find(o => {
+                let xo = Math.min(g.x1, o.x1) - Math.max(g.x0, o.x0);
+                let uo = Math.min(g.u1, o.u1) - Math.max(g.u0, o.u0);
+                return xo > 0.5 * Math.min(g.x1 - g.x0, o.x1 - o.x0) && uo > 0.5 * Math.min(g.u1 - g.u0, o.u1 - o.u0);
+            });
+            if (same) {
+                same.x0 = Math.min(same.x0, g.x0); same.x1 = Math.max(same.x1, g.x1);
+                same.u0 = Math.min(same.u0, g.u0); same.u1 = Math.max(same.u1, g.u1);
+            } else {
+                grids.push(g);
+            }
+        }
+    }
+    for (let g of grids) {
+        let x0 = g.x0 + cfg.flush, x1 = g.x1 - cfg.flush;
+        let ap = axisParams(cfg, x1 - x0, cfg.space);
+        let cl = layoutAxis(x1 - x0, ap.gap, ap.wb, ap.wt, ap.count, lw);
+        g.cols = { x0, x1, n: cl.n, pitch: cl.pitch, wb: cl.wb, wt: cl.wt };
+        // rows along the belt: pillar length = pillarLen (base) or the column width
+        let u0 = g.u0 + cfg.flush, u1 = g.u1 - cfg.flush;
+        let rp = axisParams(cfg, u1 - u0, cfg.rowGap);
+        let Lb = cfg.pillarLen > 0 ? cfg.pillarLen : cl.wb;
+        let Lt = cfg.pillarLen > 0 ? cfg.pillarLen * (cl.wt / cl.wb) : cl.wt;
+        let rl = layoutAxis(u1 - u0, rp.gap, Lb, Lt, rp.count, lw);
+        g.rows = { u0, u1, n: rl.n, pitch: rl.pitch, wb: rl.wb, wt: rl.wt };
+    }
+    return grids;
+}
+
+// strips of an axis layout for a base (wide) or top (thin) pillar: [ lo, hi ] pairs
+function axisStrips(ax, lo, hi, thin) {
+    let w = thin ? ax.wt : ax.wb;
+    let out = [];
+    if (ax.n === 1) return [ [ lo, hi ] ];
+    for (let i = 0; i < ax.n; i++) {
+        if (i === 0) out.push([ lo, lo + w ]);
+        else if (i === ax.n - 1) out.push([ hi - w, hi ]);
+        else { let c = lo + ax.wb / 2 + ax.pitch * i; out.push([ c - w / 2, c + w / 2 ]); }
+    }
+    return out;
+}
+
+/**
+ * Pillars style of the columns mode: a grid of separate pillars. A pillar is the
+ * support polygon cut to one grid cell (a column strip and a row strip). Wide base
+ * pillars and thin top pillars share the grid positions (edge pillars keep their
+ * outer face on the region edge); a pillar is a hollow loop, or solid lines when too
+ * small for its shells. Tie layers print the grid lines through the pillar centers in
+ * both directions, the rim line covers the underside edge. Parts of the support
+ * outside every grid get the ribs style.
+ */
+function supportPillarFill(poly, cfg, z, lw, tieLayer, tieSpacing) {
+    let out = [];
+    let idx = 0;
+    let pair = (a, b) => {
+        let p1 = a.clone(), p2 = b.clone();
+        p1.index = p2.index = idx;
+        out.push(p1, p2);
+    };
+    let ring = pts => {
+        if (!pts || pts.length < 3) return;
+        let keep = [ pts[0] ];
+        for (let i = 1; i < pts.length; i++) {
+            if (pts[i].distTo2D(keep[keep.length - 1]) >= 0.15) keep.push(pts[i]);
+        }
+        if (keep.length > 2 && keep[0].distTo2D(keep[keep.length - 1]) < 0.15) keep.pop();
+        if (keep.length < 3) return;
+        for (let i = 0; i < keep.length; i++) { pair(keep[i], keep[(i + 1) % keep.length]); idx++; }
+    };
+    let loops = polys => {
+        for (let q of polys || []) {
+            ring(q.points);
+            for (let h of q.inner || []) ring(h.points);
+        }
+    };
+    // one scan line through polygons, along y at x (dir 'y') or along x at y (dir 'x')
+    let scan = (polys, v, dir) => {
+        for (let ip of polys) {
+            let bb = ip.bounds.clone();
+            if (dir === 'y') { bb.maxx = v; bb.minx = v - 1; }
+            else { bb.miny = v; bb.maxy = v + 1; }
+            let saved = ip._bounds;
+            ip._bounds = bb;
+            let lines = [];
+            POLY.fillArea([ ip ], dir === 'y' ? 90 : 0, 1000, lines);
+            ip._bounds = saved;
+            for (let m = 0; m + 1 < lines.length; m += 2) pair(lines[m], lines[m + 1]);
+        }
+    };
+    let step = lw * 0.9;
+    let thin = !!poly.thinSupport;
+    let shear = cfg.shear;
+    let b = poly.bounds;
+    let o = { flat: true, z, wasm: true };
+    let minside = (2 * cfg.shells + 1) * step;
+    let rects = [];
+    for (let g of cfg.grids) {
+        // does this grid reach the polygon?
+        if (g.x1 < b.minx || g.x0 > b.maxx) continue;
+        if (g.u1 - shear * z < b.miny || g.u0 - shear * z > b.maxy) continue;
+        let colS = axisStrips(g.cols, g.cols.x0, g.cols.x1, thin);
+        let rowS = axisStrips(g.rows, g.rows.u0, g.rows.u1, thin);
+        rects.push(newPolygon().centerRectangle(
+            newPoint((g.x0 + g.x1) / 2, ((g.u0 + g.u1) / 2) - shear * z, z), g.x1 - g.x0, g.u1 - g.u0));
+        for (let [ x0, x1 ] of colS) {
+            for (let [ u0, u1 ] of rowS) {
+                let y0 = u0 - shear * z, y1 = u1 - shear * z;
+                if (y1 < b.miny - 0.01 || y0 > b.maxy + 0.01 || x1 < b.minx || x0 > b.maxx) continue;
+                let rect = newPolygon().centerRectangle(newPoint((x0 + x1) / 2, (y0 + y1) / 2, z), x1 - x0, y1 - y0);
+                let shapes = POLY.trimTo([ poly.clone(true) ], [ rect ]) || [];
+                shapes = shapes.filter(sh => Math.abs(sh.area()) > lw * lw * 0.6);
+                for (let shape of shapes) {
+                    let sb = shape.bounds;
+                    let w = sb.maxx - sb.minx, h = sb.maxy - sb.miny;
+                    if (Math.min(w, h) < minside) {
+                        // too small to be hollow: solid lines along the long side
+                        let core = POLY.offset([ shape.clone(true) ], -lw / 2, o) || [];
+                        if (!core.length) core = [ shape ];
+                        let alongY = h >= w;
+                        let short = alongY ? w : h;
+                        let lo = alongY ? sb.minx : sb.miny;
+                        let span = Math.max(0, short - lw);
+                        let n = span < lw * 0.3 ? 1 : Math.ceil(span / lw - 0.02) + 1;
+                        for (let k = 0; k < n; k++) {
+                            let v = n === 1 ? lo + short / 2 : lo + lw / 2 + 0.02 + (span - 0.04) * k / (n - 1);
+                            scan(core, v, alongY ? 'y' : 'x');
+                        }
+                        idx++;
+                        continue;
+                    }
+                    for (let s2 = 0; s2 < cfg.shells; s2++) {
+                        loops(POLY.offset([ shape.clone(true) ], -(lw / 2 + s2 * step), o) || []);
+                    }
+                    if (cfg.fill > 0) {
+                        let inner = POLY.offset([ shape.clone(true) ], -(lw / 2 + (cfg.shells - 1) * step + lw), o) || [];
+                        if (inner.length) {
+                            let lines = [];
+                            POLY.fillArea(inner, 90, lw / (cfg.fill / 100), lines);
+                            for (let k = 0; k + 1 < lines.length; k += 2) pair(lines[k], lines[k + 1]);
+                        }
+                    }
+                    idx++;
+                }
+            }
+        }
+        // tie layers: the grid lines through the pillar centers, along and across
+        if (tieLayer && (colS.length > 1 || rowS.length > 1)) {
+            let inset = POLY.offset([ poly.clone(true) ], -lw / 3, o) || [];
+            let box = newPolygon().centerRectangle(
+                newPoint((g.x0 + g.x1) / 2, ((g.u0 + g.u1) / 2) - shear * z, z), g.x1 - g.x0, g.u1 - g.u0);
+            inset = POLY.trimTo(inset, [ box ]) || [];
+            if (inset.length) {
+                for (let [ x0, x1 ] of colS) scan(inset, (x0 + x1) / 2, 'y');
+                for (let [ u0, u1 ] of rowS) scan(inset, (u0 + u1) / 2 - shear * z, 'x');
+                idx++;
+            }
+        }
+    }
+    // parts of the support that no grid covers keep the ribs style
+    let rest = [ poly ];
+    if (rects.length) {
+        rest = [];
+        POLY.subtract([ poly ], rects, rest, null, z, lw * lw * 4, { wasm: false });
+    }
+    if (rest.length) {
+        let rests = rest.filter(q => Math.abs(q.area()) > 4);
+        if (rests.length) {
+            let rcfg = Object.assign({}, cfg, { style: 'ribs', grids: null });
+            for (let q of rests) q.thinSupport = thin;
+            assignColumnRegions(rests, rcfg, lw);
+            for (let q of rests) {
+                if (!q.colRegion) continue;
+                q.fill = undefined;
+                for (let pt of supportColumnFill(q, Object.assign({}, rcfg, { flush: 0 }), z, lw, tieLayer, tieSpacing)) out.push(pt);
+            }
+        }
+    }
+    // rim line along the footprint edge: contact zone only (1) or everywhere (2)
+    if (cfg.flush > 0 && cfg.rimStyle !== 'off' && (cfg.rim === 2 || (cfg.rim === 1 && thin))) {
+        poly.fill = out;
+        supportFlushRim(poly, z, lw, cfg.flush, cfg.rimStyle === 'perforated');
         return poly.fill;
     }
     return out;
@@ -2487,7 +2720,7 @@ function supportFinColumns(inset, gap, out, minLine) {
  * @param {number} flush - clearance in mm between the rim line's outer face and the
  *                         region edge (0.2 keeps it from fusing to the neighbour)
  */
-function supportFlushRim(poly, z, lineWidth, flush) {
+function supportFlushRim(poly, z, lineWidth, flush, perforated) {
     let rims = POLY.offset([ poly ], -(flush + lineWidth / 2), { flat: true, z, wasm: true });
     if (!rims || !rims.length) return;
     let rings = [];
@@ -2511,7 +2744,7 @@ function supportFlushRim(poly, z, lineWidth, flush) {
         }
     }
     if (!segs.length) return;
-    // distance from a point to the nearest rim segment
+    // distance from a point to the nearest rim segment (the full rim, also when perforated)
     let near = p => {
         let best = Infinity;
         for (let [ a, b ] of segs) {
@@ -2536,11 +2769,45 @@ function supportFlushRim(poly, z, lineWidth, flush) {
     // one pair of points per rim segment, numbered along the loop so the fill
     // ordering walks the rim instead of jumping between segments
     let base = kept.length ? kept.reduce((m, p) => Math.max(m, p.index || 0), 0) + 1 : 0;
-    segs.forEach(([ a, b ], i) => {
-        let p1 = a.clone(), p2 = b.clone();
-        p1.index = p2.index = base + i;
-        kept.push(p1, p2);
-    });
+    if (perforated) {
+        // about 10 mm of line, 2 mm of gap along each ring, so the rim snaps off in pieces
+        let on = 10, off = 2, period = on + off;
+        let pos = 0, n = 0;
+        let emit = (a, b, t0, t1) => {
+            let p1 = a.clone(), p2 = b.clone();
+            p1.x = a.x + (b.x - a.x) * t0; p1.y = a.y + (b.y - a.y) * t0;
+            p2.x = a.x + (b.x - a.x) * t1; p2.y = a.y + (b.y - a.y) * t1;
+            p1.index = p2.index = base + n++;
+            kept.push(p1, p2);
+        };
+        let ringStart = true;
+        let lastKey = null;
+        for (let [ a, b ] of segs) {
+            let len = a.distTo2D(b);
+            if (!(len > 0)) continue;
+            // a new ring starts when this segment does not continue the last one
+            if (lastKey && Math.hypot(a.x - lastKey.x, a.y - lastKey.y) > 1e-6) pos = 0;
+            lastKey = b;
+            let s0 = 0;
+            while (s0 < len - 1e-9) {
+                let ph = (pos + s0) % period;
+                if (ph < on) {
+                    let run = Math.min(on - ph, len - s0);
+                    emit(a, b, s0 / len, (s0 + run) / len);
+                    s0 += run;
+                } else {
+                    s0 += Math.min(period - ph, len - s0);
+                }
+            }
+            pos += len;
+        }
+    } else {
+        segs.forEach(([ a, b ], i) => {
+            let p1 = a.clone(), p2 = b.clone();
+            p1.index = p2.index = base + i;
+            kept.push(p1, p2);
+        });
+    }
     poly.fill = kept;
 }
 

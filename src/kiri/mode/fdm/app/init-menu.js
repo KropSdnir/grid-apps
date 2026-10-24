@@ -83,6 +83,11 @@ function colsOn() {
     return isBelt() && api.conf.proc().sliceSupportColumns;
 }
 
+// pillar grid settings only with the pillars style
+function pillarsOn() {
+    return colsOn() && api.conf.proc().sliceSupportColStyle === 'pillars';
+}
+
 // the thin fraction (share of the column height that is the thin top) is edited as the
 // base percentage: base % = 100 - top %. shown on the field, stored as the fraction
 function baseToFraction() {
@@ -163,12 +168,17 @@ export function menu() {
     ], {class:"ext-buttons f-row", show:manualSupport}),
     _____:               newGroup(LANG.spb_menu, $('fdm-supbelt'), { modes:FDM, driven, hideable, separator, group:"fdm-supb", show:isBelt }),
     sliceSupportColumns: newBoolean(LANG.spb_cols_s, onBooleanClick, {title:LANG.spb_cols_l, show:isBelt, trigger}),
+    sliceSupportColStyle:newSelect(LANG.spb_styl_s, {title:LANG.spb_styl_l, show:colsOn, trigger}, [ { name:"ribs" }, { name:"pillars" } ]),
     sliceSupportColMode: newSelect(LANG.spb_mode_s, {title:LANG.spb_mode_l, show:colsOn}, [ { name:"percent" }, { name:"mm" }, { name:"count" } ]),
     sliceSupportColSpace:newInput(LANG.spb_spac_s, {title:LANG.spb_spac_l, convert:toFloat, bound:bound(0,500), show:colsOn}),
     sliceSupportColBase: newInput(LANG.spb_base_s, {title:LANG.spb_base_l, convert:toFloat, bound:bound(0,500), show:colsOn}),
     sliceSupportColTop:  newInput(LANG.spb_topw_s, {title:LANG.spb_topw_l, convert:toFloat, bound:bound(0,500), show:colsOn}),
     sliceSupportColShells:newInput(LANG.spb_shel_s, {title:LANG.spb_shel_l, convert:toInt,   bound:bound(1,5), show:colsOn}),
     sliceSupportColFill: newInput(LANG.spb_fill_s, {title:LANG.spb_fill_l, convert:toFloat, bound:bound(0,100), show:colsOn}),
+    sliceSupportColRim:  newInput(LANG.spb_rim_s, {title:LANG.spb_rim_l, convert:toInt, bound:bound(0,2), show:colsOn}),
+    sliceSupportRimStyle:newSelect(LANG.spb_rims_s, {title:LANG.spb_rims_l, show:colsOn}, [ { name:"continuous" }, { name:"perforated" }, { name:"off" } ]),
+    sliceSupportColGap:  newInput(LANG.spb_gap_s, {title:LANG.spb_gap_l, convert:toFloat, bound:bound(0,500), show:pillarsOn}),
+    sliceSupportPillarLen:newInput(LANG.spb_plen_s, {title:LANG.spb_plen_l, convert:toFloat, bound:bound(0,50), show:pillarsOn}),
     sliceSupportThinFraction:newInput(LANG.spb_rati_s, {title:LANG.spb_rati_l, convert:baseToFraction, bound:bound(0,100), show:isBelt}),
     sliceSupportThinZone:newInput(LANG.sp_tzon_s, {title:LANG.sp_tzon_l, convert:toFloat, bound:bound(0.0,50.0), show:isBelt}),
     separator:           newBlank({ class:"set-sep", driven, show:isBelt }),
