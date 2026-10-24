@@ -383,6 +383,7 @@ export const conf = {
                 sliceSupportRimStyle: "continuous",
                 sliceSupportRetract: 0,
                 sliceSupportAnchor: 1,
+                sliceSupportFrom: "part",
                 outputSupportMult: 0,
                 sliceSupportSpacing: 0,
                 sliceSupportMinLine: 0,

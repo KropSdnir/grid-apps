@@ -533,6 +533,8 @@ self.lang['en-us'] = {
     spb_gap_l:      ["pillars style: clear gap between pillar faces along","the belt, same unit as the column gap","(mm / % of the region length / number of rows).","the first and last row are flush with the ends"],
     spb_plen_s:     "pillar length",
     spb_plen_l:     ["pillars style: length of a base pillar along the","belt in mm, 0 = as wide as its column (square).","the top pillar scales with the top width"],
+    spb_from_s:     "support from",
+    spb_from_l:     ["part: support may also rest on the part","belt: support stands on the belt or base plate only,","connected downward through support. Nothing rests on","the part, no free bridges, no loose pieces"],
     spb_anch_s:     "anchor",
     spb_anch_l:     ["columns modes: support lines that are not held up","(more than this many mm from support, part or","belt under them) are cut away, unless they bridge","12 mm or less between two held ends. 0 = off"],
     spb_rim_s:      "rim zone",

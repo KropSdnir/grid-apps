@@ -1019,8 +1019,12 @@ export function sliceOne(settings, widget, onupdate, ondone) {
         }
         // columns modes: nothing may hang in mid-air (see anchorFills)
         let anchor = process.sliceSupportAnchor === undefined || process.sliceSupportAnchor === null ? 1.0 : process.sliceSupportAnchor;
-        if (colCfg && anchor > 0) {
-            anchorFills(slices, anchor, lineWidth, colCfg.shear * sliceHeight, widget.belt);
+        // sliceSupportFrom 'belt': support must stand on the belt/base through support only
+        // (nothing resting on the part, no free bridges); it also applies to the legacy fills
+        let fromBelt = process.sliceSupportFrom === 'belt' && isBelt;
+        if ((colCfg || fromBelt) && anchor > 0) {
+            let shear = colCfg ? colCfg.shear : (widget.belt && process.sliceSupportVertical === 2 ? widget.belt.slope : 0);
+            anchorFills(slices, anchor, lineWidth, shear * sliceHeight, widget.belt, fromBelt);
         }
         profileEnd();
     }
@@ -2228,7 +2232,7 @@ function supportPolyFill({ promises, polys, lineWidth, density, z, isBelt, angle
  * of the layer below, and the belt plane, all within tol mm (a column moves dy per
  * layer sideways). Lines are followed along their chains (rim loops, ties, ribs): a
  * stretch that is not held up is a bridge when both ends are held up and it is at most
- * 12 mm long, anything else (a cantilever, a floating piece) is cut away. Plate
+ * 12 mm long (not at all in beltOnly mode), anything else (a cantilever, a floating piece) is cut away. Plate
  * polygons are left alone.
  *
  * @param {Slice[]} slices bottom up
@@ -2236,10 +2240,14 @@ function supportPolyFill({ promises, polys, lineWidth, density, z, isBelt, angle
  * @param {number} lw line width
  * @param {number} dy sideways move of a vertical column per layer in y (mm)
  * @param {object} belt belt data (slope), if any
+ * @param {boolean} beltOnly true: only support lines (and the belt) hold support up, never
+ *        the part, and no free bridges at all (sliceSupportFrom 'belt')
  * @returns {number} mm of line removed
  */
-function anchorFills(slices, tol, lw, dy, belt) {
-    const G = 0.25, BRIDGE = 12, R = Math.max(1, Math.ceil(tol / G));
+function anchorFills(slices, tol, lw, dy, belt, beltOnly) {
+    const G = 0.25, BRIDGE = 12;
+    // how far past the end of a line below a line may reach and still count as held
+    const END = Math.min(tol, 0.35), CELL = 2;
     let minx = Infinity, maxx = -Infinity, miny = Infinity, maxy = -Infinity;
     for (let slice of slices) {
         for (let p of slice.supports || []) {
@@ -2257,18 +2265,6 @@ function anchorFills(slices, tol, lw, dy, belt) {
     let idx = (x, y) => {
         let ix = Math.round((x - minx) / G), iy = Math.round((y - miny) / G);
         return ix < 0 || iy < 0 || ix >= nx || iy >= ny ? -1 : iy * nx + ix;
-    };
-    let rl = Math.max(1, Math.round(lw / 2 / G));
-    let stamp = (m, x, y) => {
-        let ix = Math.round((x - minx) / G), iy = Math.round((y - miny) / G);
-        for (let a = -rl; a <= rl; a++) for (let b = -rl; b <= rl; b++) {
-            let jx = ix + a, jy = iy + b;
-            if (jx >= 0 && jy >= 0 && jx < nx && jy < ny) m[jy * nx + jx] = 1;
-        }
-    };
-    let stampLine = (m, a, b) => {
-        let n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / (G * 0.8)));
-        for (let i = 0; i <= n; i++) stamp(m, a.x + (b.x - a.x) * i / n, a.y + (b.y - a.y) * i / n);
     };
     // even-odd scanline fill of the rings of polygons
     let fillPolys = (m, polys) => {
@@ -2293,7 +2289,7 @@ function anchorFills(slices, tol, lw, dy, belt) {
             }
         }
     };
-    let dilate = m => {
+    let dilate = (m, R) => {
         let t = new Uint8Array(m.length), o = new Uint8Array(m.length);
         for (let iy = 0; iy < ny; iy++) {
             for (let ix = 0; ix < nx; ix++) {
@@ -2309,7 +2305,8 @@ function anchorFills(slices, tol, lw, dy, belt) {
         }
         return o;
     };
-    let held = [];   // dilated (printed support or part) of each processed layer
+    let held = [];   // dilated part (part mode only) of each processed layer
+    let grid = [];   // per layer: hash of the printed support lines (see isHeld)
     let removed = 0;
     let key = pt => Math.round(pt.x * 20) + ',' + Math.round(pt.y * 20);
     slices.forEach((slice, j) => {
@@ -2317,18 +2314,49 @@ function anchorFills(slices, tol, lw, dy, belt) {
         let isHeld = (x, y) => {
             if (y >= skewy - tol) return true;
             for (let k = 1; k <= 2; k++) {
+                // the part of the layer below (dilated), unless only the belt may hold
                 let m = held[j - k];
-                if (!m) continue;
-                let i = idx(x, y + dy * k);
-                if (i >= 0 && m[i]) return true;
+                if (m) {
+                    let i = idx(x, y + dy * k);
+                    if (i >= 0 && m[i]) return true;
+                }
+                // support lines of the layer below: close to the body of a line (tol across
+                // it) but only up to END past its ends, so a tip cannot creep out
+                // (belt only: the layer directly below, nothing may hang over an empty layer)
+                let yy = y + dy * k, hash = grid[j - k];
+                if (!hash || (beltOnly && k > 1)) continue;
+                let cx = Math.floor(x / CELL), cy = Math.floor(yy / CELL);
+                let list = hash.get(cx * 100003 + cy);
+                if (!list) continue;
+                for (let sg of list) {
+                    let t = (x - sg.ax) * sg.ux + (yy - sg.ay) * sg.uy;
+                    if (t < -END || t > sg.len + END) continue;
+                    if (Math.abs((x - sg.ax) * sg.uy - (yy - sg.ay) * sg.ux) <= sg.lat) return true;
+                }
             }
             return false;
         };
+        let hash = new Map();
+        let addSeg = (p1, p2) => {
+            let len = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+            if (len < 1e-6) return;
+            // a short line (the end of a loop) holds up sideways only about as far as it is long
+            let sg = { ax: p1.x, ay: p1.y, ux: (p2.x - p1.x) / len, uy: (p2.y - p1.y) / len, len, lat: Math.min(tol, Math.max(0.5, len)) };
+            let pad = tol + END;
+            let x0 = Math.floor((Math.min(p1.x, p2.x) - pad) / CELL), x1 = Math.floor((Math.max(p1.x, p2.x) + pad) / CELL);
+            let y0 = Math.floor((Math.min(p1.y, p2.y) - pad) / CELL), y1 = Math.floor((Math.max(p1.y, p2.y) + pad) / CELL);
+            for (let cx = x0; cx <= x1; cx++) for (let cy = y0; cy <= y1; cy++) {
+                let kk = cx * 100003 + cy;
+                if (!hash.has(kk)) hash.set(kk, []);
+                hash.get(kk).push(sg);
+            }
+        };
+        grid[j] = hash;
         let printed = new Uint8Array(nx * ny);
         for (let poly of slice.supports || []) {
             let fill = poly.fill;
             if (poly.solidPlate || !fill || fill.length < 2 || j < 1) {
-                if (fill) for (let i = 0; i + 1 < fill.length; i += 2) stampLine(printed, fill[i], fill[i + 1]);
+                if (fill) for (let i = 0; i + 1 < fill.length; i += 2) addSeg(fill[i], fill[i + 1]);
                 continue;
             }
             // split every line where it changes between held and not held
@@ -2381,7 +2409,8 @@ function anchorFills(slices, tol, lw, dy, belt) {
                     }
                 }
                 // a free stretch survives as a bridge: held at two places, short
-                let ok = total <= tol || (contacts.length >= 2 && total <= BRIDGE);
+                // beltOnly: no bridges at all, only a stub (end overshoot) of a held line stays
+                let ok = beltOnly ? (contacts.length >= 1 && total <= tol) : (total <= tol || (contacts.length >= 2 && total <= BRIDGE));
                 if (!ok) {
                     for (let i of comp) state[i] = 2;
                     removed += total;
@@ -2390,10 +2419,15 @@ function anchorFills(slices, tol, lw, dy, belt) {
             let keepPts = [];
             edges.forEach((ed, i) => { if (state[i] !== 2 && ed.len > 0.01) keepPts.push(ed.p1, ed.p2); });
             poly.fill = keepPts;
-            for (let i = 0; i + 1 < keepPts.length; i += 2) stampLine(printed, keepPts[i], keepPts[i + 1]);
+            for (let i = 0; i + 1 < keepPts.length; i += 2) addSeg(keepPts[i], keepPts[i + 1]);
         }
-        fillPolys(printed, slice.topPolys() || []);
-        held[j] = dilate(printed);
+        // the part holds support up only in 'part' mode
+        if (!beltOnly) {
+            fillPolys(printed, slice.topPolys() || []);
+            // support rests on the part where it overlaps the part of the layer below
+            // (not just stands beside it): grown by half a line width only
+            held[j] = dilate(printed, Math.max(1, Math.round(lw / 2 / G)));
+        }
     });
     return removed;
 }
