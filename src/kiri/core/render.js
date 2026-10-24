@@ -34,6 +34,26 @@ function rate_to_color(rate, max) {
 };
 
 /**
+ * FDM preview feature groups. Each group is its own layer in the preview so the
+ * existing checkbox row (and its saved state) can show or hide it without re-slicing.
+ *   part    shells, solid / sparse / thin fill, ironing, everything unclassified
+ *   support support structure
+ *   brim    brim (incl. belt brim wings), anchor / prime strip layers, skirt, purge tower
+ */
+const FDM_GROUPS = ['part', 'support', 'brim'];
+
+function fdm_group(type, anchor) {
+    if (anchor) return 'brim';
+    switch (type) {
+        case 'support': return 'support';
+        case 'brim':
+        case 'shield':
+        case 'purge tower': return 'brim';
+        default: return 'part';
+    }
+}
+
+/**
  * Generate visual representation of a gcode program.
  * @param {Output[][]} levels - Array of arrays containing `Output` objects.
  * @param {function} update - Called with a completion percentage and the rendered layer.
@@ -111,6 +131,10 @@ async function path(levels, update, opts = {}) {
     let currentLaser = null;
     let retracted = false;
     let retractz = 0;
+    // FDM: split printed lines into feature groups (see FDM_GROUPS)
+    const groups = opts.fdm === true;
+    let curType = undefined;
+    let curGroup = 'part';
 
     function color(point) {
         if (toolMode) {
@@ -145,6 +169,7 @@ async function path(levels, update, opts = {}) {
         let height = level.height / 2;
         let width = 1;
         let emits = 0;
+        const anchor = level.anchor === true;
 
         level.forEach(out => {
             // skip cam gcode records
@@ -154,6 +179,10 @@ async function path(levels, update, opts = {}) {
             if (retracted && out.emit) {
                 retracted = false;
                 engages.push(lastOutPoint);
+            }
+            // output types are only set on the first record of a sequence: carry the type forward
+            if (groups) {
+                if (out.type !== undefined) curType = out.type;
             }
             let outPoint = out.point;
             // rotate 4th axis indexed points
@@ -189,10 +218,12 @@ async function path(levels, update, opts = {}) {
                 }
                 if (out.emit) {
                     // checks if a new poly should be started
-                    if (!lastOut.emit || (ckspeed && out.speed !== lastOut.speed) || lastEnd) {
+                    const grp = groups ? fdm_group(curType, anchor) : undefined;
+                    if (!lastOut.emit || (ckspeed && out.speed !== lastOut.speed) || lastEnd || (groups && grp !== curGroup)) {
                         current = newPolygon().setOpen();
                         current.push(lastOutPoint);
                         current.color = color(out);
+                        if (groups) current.group = curGroup = grp;
                         pushPrint(out.tool, current);
                     }
                     current.push(outPoint);
@@ -223,6 +254,7 @@ async function path(levels, update, opts = {}) {
                 current.push(outPoint);
                 if (out.emit) {
                     current.color = color(out);
+                    if (groups) current.group = curGroup = fdm_group(curType, anchor);
                     pushPrint(out.tool, current);
                 } else {
                     moves.push(current);
@@ -304,13 +336,21 @@ async function path(levels, update, opts = {}) {
 
         // force level when present
         let pz = level.z ? level.z - height : opts.z;
+        // FDM groups are emitted in a fixed order (part, support, brim) so the checkboxes keep their order
+        const ordered = [];
         for (let array of Object.values(prints)) {
-            for (let poly of array) {
+            for (let poly of array) ordered.push({ poly, array });
+        }
+        if (groups) {
+            ordered.sort((a, b) => FDM_GROUPS.indexOf(a.poly.group || 'part') - FDM_GROUPS.indexOf(b.poly.group || 'part'));
+        }
+        for (let { poly, array } of ordered) {
+            {
                 if (flat && poly.appearsClosed()) {
                     poly.setClosed();
                     poly.points.pop();
                 }
-                let action = poly.isLaser ? 'speed' : opts.action || 'print';
+                let action = poly.isLaser ? 'speed' : opts.action || (groups ? (poly.group || 'part') : 'print');
                 output
                     .setLayer(action, printOpt)
                     .addPolys([ poly ],

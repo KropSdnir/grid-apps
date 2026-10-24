@@ -2817,3 +2817,22 @@ details[open] summary::after {
 .vn-read { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; margin-top: 6px; }
 .vn-read label { overflow: hidden; white-space: nowrap; display: flex; flex-direction: column; gap: 1px; font-size: 9px; opacity: 0.95; min-width: 0; }
 .vn-read .vn-num { width: 100% !important; font-size: 11px; }
+
+/* preview feature filter buttons (src/kiri/app/featurefilter.js), at the end of the checkbox row above the layer slider */
+#pf-quick { display: inline-flex; flex-direction: row; align-items: center; gap: 3px; margin-left: 6px; pointer-events: all; }
+#pf-quick button {
+    height: 20px;
+    margin: 0;
+    padding: 0 7px;
+    border: 1px solid var(--border-gray, rgba(128,128,128,0.5));
+    border-radius: 10px;
+    background-color: rgba(128,128,128,0.2);
+    color: inherit;
+    font: inherit;
+    font-size: 11px;
+    align-items: center;
+    text-transform: none;
+    cursor: pointer;
+}
+#pf-quick button:hover { background-color: var(--blue-3, #bccbdb); color: #fff; }
+#pf-quick button.on { background-color: var(--blue-1, #607fa4); color: #fff; }

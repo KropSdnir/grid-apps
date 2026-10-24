@@ -162,6 +162,9 @@ function content(actions) {
                     menuItem(actions, { id: 'view-top', lk: 'top', text: 'top', iconClass: 'fas fa-square' }),
                     menuItem(actions, { id: 'view-jobinfo', lk: 'jobinfo', text: 'job info', iconClass: 'fas fa-eye' }),
                     menuItem(actions, { id: 'view-navigator', lk: 'navigator', text: 'view navigator', iconClass: 'fas fa-eye' }),
+                    menuItem(actions, { id: 'view-support-only', lk: 'supportonly', text: 'show support only', iconClass: 'fas fa-layer-group' }),
+                    menuItem(actions, { id: 'view-part-only', lk: 'partonly', text: 'show part only', iconClass: 'fas fa-cube' }),
+                    menuItem(actions, { id: 'view-show-all', lk: 'showall', text: 'show all', iconClass: 'fas fa-eye' }),
                     hr(),
                     menuItem(actions, { id: 'app-xpnd', lk: 'fullscreen', text: 'fullscreen', iconClass: 'fas fa-maximize' })
                 ]

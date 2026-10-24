@@ -6,6 +6,7 @@ import { beta, version } from '../../../moto/license.js';
 import { fileOps } from '../file-ops.js';
 import { jobinfo } from '../jobinfo.js';
 import { viewnav } from '../viewnav.js';
+import { featurefilter } from '../featurefilter.js';
 import { local as sdb } from '../../../data/local.js';
 import { preferences } from '../preferences.js';
 import { settings as set_ctrl } from '../conf/manager.js';
@@ -359,6 +360,7 @@ function setup_keybd_nav() {
     $('view-top').onclick = space.view.top;
     jobinfo.init();
     viewnav.init();
+    featurefilter.init();
     $('view-home').onclick = space.view.home;
 
     $('unrotate').onclick = () => {
