@@ -1504,6 +1504,7 @@ function slicePrintPath(print, slice, startPoint, offset, output, opt = {}) {
             flow = opt.flow || 1,
             near = opt.near ?? (antiBacklash ? false : true),
             fast = opt.fast ?? false, // support infill only!
+            supportRetract = fast ? (process.sliceSupportRetract || 0) : 0,
             fill = (opt.fill >= 0 ? opt.fill : fillMult) * flow,
             thinDist = near ? thinWall : thinWall;
 
@@ -1622,6 +1623,12 @@ function slicePrintPath(print, slice, startPoint, offset, output, opt = {}) {
                 // anti-backlash on longer move
                 if (!fast && antiBacklash && dist > retractDist) {
                     print.addOutput(preout, p1.add({x:antiBacklash,y:-antiBacklash,z:0}), 0, moveSpeed, extruder);
+                }
+
+                // support fills (fast): retract on a hop longer than sliceSupportRetract (mm,
+                // dist is squared), so the nozzle does not string across the support pillars
+                if (fast && supportRetract > 0 && dist > supportRetract * supportRetract) {
+                    retract();
                 }
 
                 // bridge ends of fill when they're close together

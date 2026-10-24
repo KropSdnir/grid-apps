@@ -559,6 +559,8 @@ self.lang['en-us'] = {
     sp_flsh_l:      ["run one continuous support line along","the edge of the support, so it reaches","the outline of the part underside","value = clearance to that edge in mm","(0.2 typical), 0 to disable"],
     sp_hdep_s:      "hole depth",
     sp_hdep_l:      ["hole bridge: how far below the mouth of a","hole (mm) its footprint is kept free of support,","so only the crescent under the opening is","skipped and the pedestal stays solid.","0 = use the thin zone length"],
+    sp_retr_s:      "support retract",
+    sp_retr_l:      ["retract on any travel inside the support longer","than this (mm), so the nozzle does not string","across pillars. 0 = off (the normal retract rule","only), 2.5 is a good start"],
     sp_flow_s:      "support flow",
     sp_flow_l:      ["extrusion multiplier for support lines","0 = use the fill multiplier"],
     sp_xpnd_s:      "expand",

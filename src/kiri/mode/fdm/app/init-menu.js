@@ -186,6 +186,7 @@ export function menu() {
     sliceSupportHole:    newInput(LANG.sp_hole_s, {title:LANG.sp_hole_l, convert:toFloat, bound:bound(0,2000), show:isBelt}),
     sliceSupportHoleDepth:newInput(LANG.sp_hdep_s, {title:LANG.sp_hdep_l, convert:toFloat, bound:bound(0,50), show:isBelt}),
     sliceSupportTie:     newInput(LANG.sp_tie_s,  {title:LANG.sp_tie_l,  convert:toInt,   bound:bound(0,200), show:isBelt}),
+    sliceSupportRetract: newInput(LANG.sp_retr_s, {title:LANG.sp_retr_l, convert:toFloat, bound:bound(0,50), show:isBelt}),
     beltPedestalBase:    newInput(LANG.sp_base_s, {title:LANG.sp_base_l, convert:toFloat, bound:bound(0,10), show:isBelt}),
     beltPedestalMargin:  newInput(LANG.sp_bmrg_s, {title:LANG.sp_bmrg_l, convert:toFloat, bound:bound(0,20), show:isBelt}),
     separator:           newBlank({ class:"set-sep", driven, show:isBelt }),
