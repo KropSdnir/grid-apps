@@ -235,6 +235,8 @@ export function sliceOne(settings, widget, onupdate, ondone) {
         clipOffset = process.sliceSupportOffset + lineWidth / 2,
         sliceFillAngle = process.sliceFillAngle,
         supportDensity = process.sliceSupportDensity,
+        // belt 'columns' support: hollow ribs, same positions top and bottom
+        columnsMode = !!(process.sliceSupportColumns && isBelt),
         { sliceCompInner, sliceCompOuter } = process;
 
     // create render context for visualization
@@ -993,6 +995,7 @@ export function sliceOne(settings, widget, onupdate, ondone) {
                 thinLen: process.sliceSupportThin || 0,
                 flush: process.sliceSupportFlush || 0,
                 finGap: process.sliceSupportFinGap || 0,
+                columns: columnsMode ? columnsConfig(process) : null,
                 // pillars stay vertical in the world: the fill grid follows the belt skew
                 phase: widget.belt ? slice.z * widget.belt.slope : 0,
                 isBelt,
@@ -1201,8 +1204,11 @@ export function sliceOne(settings, widget, onupdate, ondone) {
         // support contact zone (belt): the part of the support within a few mm of
         // the part is flagged thin and filled with short dashes (small pillars)
         // instead of full-width fins; the rest, and the base, keep the normal fill
-        if (isBelt && process.sliceSupportThin > 0 && supportDensity) {
-            let zoneLayers = Math.max(1, Math.round((process.sliceSupportThinZone || 3) / sliceHeight));
+        if (isBelt && (process.sliceSupportThin > 0 || columnsMode) && (supportDensity || columnsMode)) {
+            // columns mode: no thin zone length (0) means no cap, only the fraction counts
+            let zoneLayers = columnsMode && !(process.sliceSupportThinZone > 0)
+                ? slices.length
+                : Math.max(1, Math.round((process.sliceSupportThinZone || 3) / sliceHeight));
             let minArea = lineWidth * lineWidth;
             // sliceSupportThinFraction: the thin zone of a column is this fraction of the
             // column's own height (part above to belt below), at most the zone length
@@ -1265,7 +1271,7 @@ export function sliceOne(settings, widget, onupdate, ondone) {
         }
 
         // fill all supports (auto and manual)
-        if (supportDensity) {
+        if (supportDensity || columnsMode) {
             await processSupportFills(0.8, 0.84);
         }
 
@@ -2013,8 +2019,9 @@ function areaFill({ promises: fillQ, polys, angle, spacing, output, minLen, maxL
  * @see CONSTANTS.SUPPORT_AUTO_ANGLE_TALL - Auto angle for tall polygons (1000 = 0°)
  * @see CONSTANTS.SUPPORT_CONNECT_DISTANCE_MULT - Distance multiplier for line connection (2x)
  */
-function layerSupportFill({ promises, slice, lineWidth, density, isBelt, angle, outline, gap, spacingGap, minLine, tie, edge, thinLen, flush, finGap, phase }) {
+function layerSupportFill({ promises, slice, lineWidth, density, isBelt, angle, outline, gap, spacingGap, minLine, tie, edge, thinLen, flush, finGap, columns, phase }) {
     let polys = slice.supports;
+    if (columns && polys) assignColumnRegions(polys, columns, lineWidth);
     if (polys) {
         supportPolyFill({
             angle,
@@ -2030,6 +2037,7 @@ function layerSupportFill({ promises, slice, lineWidth, density, isBelt, angle, 
             thinLen,
             flush,
             finGap,
+            columns,
             phase,
             // every Nth layer prints cross lines (0 degrees) that tie the fins together
             tieLayer: tie > 0 && slice.index >= 0 && slice.index % tie === 0,
@@ -2081,10 +2089,15 @@ function layerSupportFill({ promises, slice, lineWidth, density, isBelt, angle, 
  * @see CONSTANTS.SUPPORT_INSET_RATIO - Inset ratio for fill area (1/3)
  * @see CONSTANTS.SUPPORT_CONNECT_DISTANCE_MULT - Distance multiplier for line connection (2x)
  */
-function supportPolyFill({ promises, polys, lineWidth, density, z, isBelt, angle, outline, spacingGap, minLine, tieLayer, tieSpacing, edge, thinLen, flush, finGap, phase }) {
+function supportPolyFill({ promises, polys, lineWidth, density, z, isBelt, angle, outline, spacingGap, minLine, tieLayer, tieSpacing, edge, thinLen, flush, finGap, columns, phase }) {
     // calculate fill spacing: an explicit open gap between lines (mm) wins over density
     let spacing = spacingGap > 0 ? lineWidth + spacingGap : lineWidth * (1 / density);
     for (let poly of polys) {
+        // columns mode: hollow ribs at the region's column positions
+        if (columns && !poly.solidPlate && poly.colRegion && !promises) {
+            poly.fill = supportColumnFill(poly, columns, z, lineWidth, tieLayer, tieSpacing);
+            continue;
+        }
         // pillar spacing for thin (contact zone) support is the dash period along the line
         let thin = poly.thinSupport && thinLen > 0 && !tieLayer;
         // base plate polygons print solid (adjacent lines, no gaps)
@@ -2191,6 +2204,228 @@ function supportPolyFill({ promises, polys, lineWidth, density, z, isBelt, angle
             }
         }
     }
+}
+
+/**
+ * Settings for the belt 'columns' support mode
+ */
+function columnsConfig(process) {
+    let mode = process.sliceSupportColMode || 'percent';
+    return {
+        mode,
+        space: process.sliceSupportColSpace > 0 ? process.sliceSupportColSpace : (mode === 'count' ? 6 : mode === 'mm' ? 6 : 20),
+        base: process.sliceSupportColBase > 0 ? process.sliceSupportColBase : (mode === 'mm' ? 4 : 60),
+        top: process.sliceSupportColTop > 0 ? process.sliceSupportColTop : (mode === 'mm' ? 2 : 33),
+        shells: Math.max(1, Math.round(process.sliceSupportColShells || 1)),
+        fill: Math.max(0, Math.min(100, process.sliceSupportColFill || 0)),
+        flush: process.sliceSupportFlush || 0
+    };
+}
+
+/**
+ * Group the support polygons of a layer into regions (the thin and wide pieces of
+ * one support region touch each other) and work out the column positions once per
+ * region, so the base and the top of a column share the same position.
+ *
+ * Each polygon gets .colRegion = { minx, maxx, count, pitch, centers, base }
+ */
+function assignColumnRegions(polys, cfg, lineWidth) {
+    let list = polys.filter(p => !p.solidPlate && p.points.length >= 3);
+    let parent = list.map((p, i) => i);
+    let find = i => { while (parent[i] !== i) i = parent[i] = parent[parent[i]]; return i; };
+    let tol = 0.6;
+    for (let i = 0; i < list.length; i++) {
+        for (let j = i + 1; j < list.length; j++) {
+            let a = list[i].bounds, b = list[j].bounds;
+            if (a.minx <= b.maxx + tol && b.minx <= a.maxx + tol && a.miny <= b.maxy + tol && b.miny <= a.maxy + tol) {
+                parent[find(i)] = find(j);
+            }
+        }
+    }
+    let groups = new Map();
+    list.forEach((p, i) => {
+        let r = find(i);
+        if (!groups.has(r)) groups.set(r, []);
+        groups.get(r).push(p);
+    });
+    for (let members of groups.values()) {
+        let minx = Infinity, maxx = -Infinity;
+        for (let p of members) {
+            minx = Math.min(minx, p.bounds.minx);
+            maxx = Math.max(maxx, p.bounds.maxx);
+        }
+        let flush = cfg.flush;
+        let x0 = minx + flush, x1 = maxx - flush;
+        let extent = x1 - x0;
+        let region = { minx: x0, maxx: x1, count: 1, pitch: 0, centers: [ (x0 + x1) / 2 ], base: extent };
+        // widths and count by unit
+        let mode = cfg.mode;
+        let count, widthBase;
+        if (mode === 'count') {
+            count = Math.max(2, Math.round(cfg.space));
+        } else if (mode === 'mm') {
+            count = Math.max(2, Math.round(extent / Math.max(cfg.space, 0.5)) + 1);
+        } else {
+            count = Math.max(2, Math.round(extent / Math.max(extent * cfg.space / 100, 0.5)) + 1);
+        }
+        // approximate base width first (needed for the edge centers)
+        let guessPitch = extent / (count - 1);
+        widthBase = mode === 'mm' ? cfg.base : cfg.base / 100 * guessPitch;
+        widthBase = Math.max(lineWidth, widthBase);
+        // too small for two columns: one column across the whole region
+        if (extent <= 2 * widthBase + lineWidth) {
+            region.count = 1;
+            region.base = extent;
+        } else {
+            let c0 = x0 + widthBase / 2, c1 = x1 - widthBase / 2;
+            let pitch = (c1 - c0) / (count - 1);
+            // columns closer than their width would merge: fewer columns
+            while (count > 2 && pitch < widthBase * 1.15) {
+                count--;
+                pitch = (c1 - c0) / (count - 1);
+            }
+            let wb = mode === 'mm' ? cfg.base : cfg.base / 100 * pitch;
+            wb = Math.max(lineWidth, Math.min(wb, pitch * 0.95));
+            c0 = x0 + wb / 2;
+            c1 = x1 - wb / 2;
+            pitch = (c1 - c0) / (count - 1);
+            region.count = count;
+            region.pitch = pitch;
+            region.base = wb;
+            region.centers = [];
+            for (let i = 0; i < count; i++) region.centers.push(c0 + pitch * i);
+        }
+        for (let p of members) p.colRegion = region;
+    }
+}
+
+/**
+ * Fill one support polygon with hollow ribs (columns). Columns run along y, one per
+ * region column position; the edge columns keep their outer face on the region edge.
+ * A rib is a loop of shells with an optional inner fill; one too narrow for its
+ * shells collapses to solid lines. Tie layers add cross lines over the ribs.
+ *
+ * @returns {Point[]} point pairs (fill lines)
+ */
+function supportColumnFill(poly, cfg, z, lineWidth, tieLayer, tieSpacing) {
+    let region = poly.colRegion;
+    let out = [];
+    let idx = 0;
+    let pair = (a, b) => {
+        let p1 = a.clone(), p2 = b.clone();
+        p1.index = p2.index = idx;
+        out.push(p1, p2);
+    };
+    let ring = pts => {
+        if (!pts || pts.length < 3) return;
+        let keep = [ pts[0] ];
+        for (let i = 1; i < pts.length; i++) {
+            if (pts[i].distTo2D(keep[keep.length - 1]) >= 0.15) keep.push(pts[i]);
+        }
+        if (keep.length > 2 && keep[0].distTo2D(keep[keep.length - 1]) < 0.15) keep.pop();
+        if (keep.length < 3) return;
+        for (let i = 0; i < keep.length; i++) { pair(keep[i], keep[(i + 1) % keep.length]); idx++; }
+    };
+    let loops = polys => {
+        for (let q of polys || []) {
+            ring(q.points);
+            for (let h of q.inner || []) ring(h.points);
+        }
+    };
+    let lw = lineWidth;
+    let step = lw * 0.9;
+    let thin = !!poly.thinSupport;
+    let b = poly.bounds;
+    let ymid = (b.miny + b.maxy) / 2, yh = b.maxy - b.miny + 4;
+    for (let i = 0; i < region.count; i++) {
+        let last = i === region.count - 1;
+        let first = i === 0;
+        // width of this column here: base (wide) or top (thin) in mm
+        let pitch = region.pitch || region.base;
+        let w;
+        if (region.count === 1) {
+            w = region.base;
+        } else if (cfg.mode === 'mm') {
+            w = thin ? cfg.top : cfg.base;
+        } else {
+            w = (thin ? cfg.top : cfg.base) / 100 * pitch;
+        }
+        w = Math.max(lw, Math.min(w, region.count === 1 ? w : pitch * 0.95));
+        let x0, x1;
+        if (region.count === 1) {
+            x0 = region.minx; x1 = region.maxx;
+        } else if (first) {
+            x0 = region.minx; x1 = x0 + w;
+        } else if (last) {
+            x1 = region.maxx; x0 = x1 - w;
+        } else {
+            let c = region.centers[i];
+            x0 = c - w / 2; x1 = c + w / 2;
+        }
+        if (x1 - x0 < lw * 0.5) continue;
+        let rect = newPolygon().centerRectangle(newPoint((x0 + x1) / 2, ymid, z), x1 - x0, yh);
+        let shapes = POLY.trimTo([ poly.clone(true) ], [ rect ]) || [];
+        shapes = shapes.filter(sh => Math.abs(sh.area()) > lw * lw);
+        for (let shape of shapes) {
+            let width = x1 - x0;
+            let o = { flat: true, z, wasm: true };
+            if (width < (2 * cfg.shells + 1) * step) {
+                // too narrow for hollow: solid lines along the rib, evenly spread over
+                // its width (one line when it is no wider than two line widths)
+                let core = POLY.offset([ shape.clone(true) ], -lw / 2, o) || [];
+                if (!core.length) core = [ shape ];
+                let span = Math.max(0, width - lw);
+                let n = span < lw * 0.3 ? 1 : Math.ceil(span / step - 0.05) + 1;
+                for (let k = 0; k < n; k++) {
+                    let x = n === 1 ? (x0 + x1) / 2 : x0 + lw / 2 + 0.02 + (span - 0.04) * k / (n - 1);
+                    for (let ip of core) {
+                        let bb = ip.bounds.clone();
+                        bb.maxx = x;
+                        bb.minx = x - 1;
+                        let saved = ip._bounds;
+                        ip._bounds = bb;
+                        let lines = [];
+                        POLY.fillArea([ ip ], 90, 1000, lines);
+                        ip._bounds = saved;
+                        for (let m = 0; m + 1 < lines.length; m += 2) pair(lines[m], lines[m + 1]);
+                    }
+                }
+                idx++;
+                continue;
+            }
+            for (let s = 0; s < cfg.shells; s++) {
+                let ring_ = POLY.offset([ shape.clone(true) ], -(lw / 2 + s * step), o) || [];
+                loops(ring_);
+            }
+            if (cfg.fill > 0) {
+                let inner = POLY.offset([ shape.clone(true) ], -(lw / 2 + (cfg.shells - 1) * step + lw), o) || [];
+                if (inner.length) {
+                    let lines = [];
+                    POLY.fillArea(inner, 90, lw / (cfg.fill / 100), lines);
+                    for (let k = 0; k + 1 < lines.length; k += 2) pair(lines[k], lines[k + 1]);
+                }
+            }
+            idx++;
+        }
+    }
+    // tie layers: cross lines over the whole region keep the ribs together
+    if (tieLayer && region.count > 1) {
+        let inset = POLY.offset([ poly.clone(true) ], -lw / 3, { flat: true, z, wasm: true }) || [];
+        if (inset.length) {
+            let lines = [];
+            POLY.fillArea(inset, 0, tieSpacing, lines);
+            for (let k = 0; k + 1 < lines.length; k += 2) pair(lines[k], lines[k + 1]);
+        }
+    }
+    // flush edge: the continuous rim line along the region footprint (replaces the
+    // outer wall of the edge columns), so the underside outline is covered between
+    // the columns too
+    if (cfg.flush > 0) {
+        poly.fill = out;
+        supportFlushRim(poly, z, lineWidth, cfg.flush);
+        return poly.fill;
+    }
+    return out;
 }
 
 /**

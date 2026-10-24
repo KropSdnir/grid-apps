@@ -78,6 +78,21 @@ function notFwRetract() {
     return !api.conf.get().device.fwRetract;
 }
 
+// belt columns support settings are shown only with the columns mode on
+function colsOn() {
+    return isBelt() && api.conf.proc().sliceSupportColumns;
+}
+
+// the thin fraction (share of the column height that is the thin top) is edited as the
+// base percentage: base % = 100 - top %. shown on the field, stored as the fraction
+function baseToFraction() {
+    let nv = this.value !== '' ? parseFloat(this.value) : 0;
+    if (isNaN(nv)) nv = 0;
+    if (this.bound) nv = this.bound(nv);
+    this.value = nv;
+    return Math.round((100 - nv)) / 100;
+}
+
 export function menu() {
 
     return {
@@ -127,24 +142,14 @@ export function menu() {
     sliceSupportAngle:   newInput(LANG.sp_angl_s, {title:LANG.sp_angl_l, convert:toFloat, bound:bound(0.0,90.0)}),
     sliceSupportDensity: newInput(LANG.sp_dens_s, {title:LANG.sp_dens_l, convert:toFloat, bound:bound(0.0,1.0)}),
     sliceSupportSpacing: newInput(LANG.sp_spac_s, {title:LANG.sp_spac_l, convert:toFloat, bound:bound(0.0,20.0)}),
-    sliceSupportEdge:    newBoolean(LANG.sp_edge_s, onBooleanClick, {title:LANG.sp_edge_l, show:isBelt}),
-    sliceSupportThin:    newInput(LANG.sp_thin_s, {title:LANG.sp_thin_l, convert:toFloat, bound:bound(0.0,20.0), show:isBelt}),
-    sliceSupportThinZone:newInput(LANG.sp_tzon_s, {title:LANG.sp_tzon_l, convert:toFloat, bound:bound(0.0,50.0), show:isBelt}),
-    sliceSupportThinFraction:newInput(LANG.sp_tfrc_s, {title:LANG.sp_tfrc_l, convert:toFloat, bound:bound(0.0,0.95), show:isBelt}),
-    sliceSupportFinGap:  newInput(LANG.sp_fing_s, {title:LANG.sp_fing_l, convert:toFloat, bound:bound(0.0,50.0), show:isBelt}),
     sliceSupportMinLine: newInput(LANG.sp_minl_s, {title:LANG.sp_minl_l, convert:toFloat, bound:bound(0.0,50.0)}),
     outputSupportMult:   newInput(LANG.sp_flow_s, {title:LANG.sp_flow_l, convert:toFloat, bound:bound(0.0,3.0)}),
     sliceSupportMinWidth:newInput(LANG.sp_minw_s, {title:LANG.sp_minw_l, convert:toFloat, bound:bound(0.0,50.0)}),
-    sliceSupportTie:     newInput(LANG.sp_tie_s,  {title:LANG.sp_tie_l,  convert:toInt,   bound:bound(0,200)}),
     sliceSupportOffset:  newInput(LANG.sp_offs_s, {title:LANG.sp_offs_l, convert:toFloat, bound:bound(0.0,200.0)}),
     sliceSupportExtra:   newInput(LANG.sp_xpnd_s, {title:LANG.sp_xpnd_l, convert:toFloat, bound:bound(0.0,10.0)}),
     sliceSupportVertical:newInput(LANG.sp_vert_s, {title:LANG.sp_vert_l, convert:toInt,   bound:bound(-2,2), show:isBelt}),
     sliceSupportMinArea: newInput(LANG.sp_mina_s, {title:LANG.sp_mina_l, convert:toFloat, bound:bound(0,2000)}),
     sliceSupportMinAreaPct:newInput(LANG.sp_minp_s, {title:LANG.sp_minp_l, convert:toFloat, bound:bound(0,100)}),
-    sliceSupportHole:    newInput(LANG.sp_hole_s, {title:LANG.sp_hole_l, convert:toFloat, bound:bound(0,2000)}),
-    sliceSupportFlush:   newInput(LANG.sp_flsh_s, {title:LANG.sp_flsh_l, convert:toFloat, bound:bound(0,2)}),
-    beltPedestalBase:    newInput(LANG.sp_base_s, {title:LANG.sp_base_l, convert:toFloat, bound:bound(0,10), show:isBelt}),
-    beltPedestalMargin:  newInput(LANG.sp_bmrg_s, {title:LANG.sp_bmrg_l, convert:toFloat, bound:bound(0,20), show:isBelt}),
     // sliceSupportSpan:    newInput(LANG.sp_span_s, {title:LANG.sp_span_l, convert:toFloat, bound:bound(0.0,200.0), show:() => ui.sliceSupportEnable.checked }),
     separator:           newBlank({ class:"set-sep", driven }),
     sliceSupportOutline: newBoolean(LANG.sp_outl_s, onBooleanClick, {title:LANG.sp_outl_l, xshow: () => !isTree() }),
@@ -156,6 +161,26 @@ export function menu() {
         (ui.ssmDel = newButton(undefined, onButtonClick, {icon:'<i class="fas fa-minus"></i>'})),
         (ui.ssmClr = newButton(undefined, onButtonClick, {icon:'<i class="fas fa-trash-alt"></i>'}))
     ], {class:"ext-buttons f-row", show:manualSupport}),
+    _____:               newGroup(LANG.spb_menu, $('fdm-supbelt'), { modes:FDM, driven, hideable, separator, group:"fdm-supb", show:isBelt }),
+    sliceSupportColumns: newBoolean(LANG.spb_cols_s, onBooleanClick, {title:LANG.spb_cols_l, show:isBelt, trigger}),
+    sliceSupportColMode: newSelect(LANG.spb_mode_s, {title:LANG.spb_mode_l, show:colsOn}, [ { name:"percent" }, { name:"mm" }, { name:"count" } ]),
+    sliceSupportColSpace:newInput(LANG.spb_spac_s, {title:LANG.spb_spac_l, convert:toFloat, bound:bound(0,500), show:colsOn}),
+    sliceSupportColBase: newInput(LANG.spb_base_s, {title:LANG.spb_base_l, convert:toFloat, bound:bound(0,500), show:colsOn}),
+    sliceSupportColTop:  newInput(LANG.spb_topw_s, {title:LANG.spb_topw_l, convert:toFloat, bound:bound(0,500), show:colsOn}),
+    sliceSupportColShells:newInput(LANG.spb_shel_s, {title:LANG.spb_shel_l, convert:toInt,   bound:bound(1,5), show:colsOn}),
+    sliceSupportColFill: newInput(LANG.spb_fill_s, {title:LANG.spb_fill_l, convert:toFloat, bound:bound(0,100), show:colsOn}),
+    sliceSupportThinFraction:newInput(LANG.spb_rati_s, {title:LANG.spb_rati_l, convert:baseToFraction, bound:bound(0,100), show:isBelt}),
+    sliceSupportThinZone:newInput(LANG.sp_tzon_s, {title:LANG.sp_tzon_l, convert:toFloat, bound:bound(0.0,50.0), show:isBelt}),
+    separator:           newBlank({ class:"set-sep", driven, show:isBelt }),
+    sliceSupportFlush:   newInput(LANG.sp_flsh_s, {title:LANG.sp_flsh_l, convert:toFloat, bound:bound(0,2), show:isBelt}),
+    sliceSupportHole:    newInput(LANG.sp_hole_s, {title:LANG.sp_hole_l, convert:toFloat, bound:bound(0,2000), show:isBelt}),
+    sliceSupportTie:     newInput(LANG.sp_tie_s,  {title:LANG.sp_tie_l,  convert:toInt,   bound:bound(0,200), show:isBelt}),
+    beltPedestalBase:    newInput(LANG.sp_base_s, {title:LANG.sp_base_l, convert:toFloat, bound:bound(0,10), show:isBelt}),
+    beltPedestalMargin:  newInput(LANG.sp_bmrg_s, {title:LANG.sp_bmrg_l, convert:toFloat, bound:bound(0,20), show:isBelt}),
+    separator:           newBlank({ class:"set-sep", driven, show:isBelt }),
+    sliceSupportThin:    newInput(LANG.sp_thin_s, {title:LANG.sp_thin_l, convert:toFloat, bound:bound(0.0,20.0), show:isBelt}),
+    sliceSupportFinGap:  newInput(LANG.sp_fing_s, {title:LANG.sp_fing_l, convert:toFloat, bound:bound(0.0,50.0), show:isBelt}),
+    sliceSupportEdge:    newBoolean(LANG.sp_edge_s, onBooleanClick, {title:LANG.sp_edge_l, show:isBelt}),
     _____:               newGroup(LANG.fl_menu, $('fdm-base'), { modes:FDM, driven, hideable, separator, group:"fdm-base" }),
     firstSliceHeight:    newInput(LANG.fl_lahi_s, {title:LANG.fl_lahi_l, convert:toFloat, show:isNotBelt}),
     firstLayerNozzleTemp:newInput(LANG.fl_nozl_s, {title:LANG.fl_nozl_l, convert:toInt,   show:isNotBelt}),

@@ -164,7 +164,21 @@ export function init() {
     api.event.on("settings.load", (settings) => {
         if (settings.mode !== 'FDM') return;
         updateRanges(settings.process.ranges);
+        // belt printers: the new 'support (belt)' section replaces most of the 'support'
+        // section, so collapse the old one once (the user can open it again)
+        let hid = settings.hidden;
+        if (hid && api.device.isBelt() && !hid._beltSupportMoved) {
+            hid['fdm-supp'] = true;
+            hid['fdm-supb'] = false;
+            hid._beltSupportMoved = true;
+        }
     });
+
+    // the thin fraction is edited as the base percentage (base % = 100 - top %)
+    if (ui.sliceSupportThinFraction) {
+        const frac = ui.sliceSupportThinFraction;
+        frac.setv = v => { frac.value = Math.round((1 - (v || 0)) * 100); };
+    }
 
     api.event.on("settings.saved", (settings) => {
         updateRanges(settings.process.ranges);
