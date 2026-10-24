@@ -904,6 +904,8 @@ self.lang['en-us'] = {
     ou_fanl_l:      ["layer # to turn on fan","layers start at 0. on belt printers","counted from the first part layer,","after the prime lines and anchor"],
     ou_fans_s:      "fan on speed",
     ou_fans_l:      "0 - 255",
+    ou_fanp_s:      "fan on speed %",
+    ou_fanp_l:      ["fan speed in percent (0 - 100)","the raw value beside it is what goes into","the G-code (M106 S, 0 - 255) and the profile:","65 % = 166, 100 % = 255"],
     ou_layt_s:      "min layer time",
     ou_layt_l:      ["minimum allowable layer print time in seconds. printing will be slowed if the layer would outerwise complete in fewer seconds.","0 = disabled"],
 

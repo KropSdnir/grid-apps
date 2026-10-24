@@ -174,6 +174,43 @@ export function init() {
         }
     });
 
+    // fan speeds: the field shows a percent, the saved value stays the raw 0-255 PWM value.
+    // A second small box beside it shows (and can edit) the raw value
+    for (let key of [ 'outputFanSpeed', 'firstLayerFanSpeed' ]) {
+        const ip = ui[key];
+        if (!ip || !ip.parentNode) continue;
+        const box = document.createElement('input');
+        box.type = 'text';
+        box.size = 3;
+        box.className = 'fan-raw';
+        box.title = '0 - 255';
+        box.setAttribute('spellcheck', 'false');
+        box.style.cssText = 'margin-left:6px;width:3.2em;text-align:right;opacity:0.75';
+        ip.parentNode.appendChild(box);
+        ip._rawBox = box;
+        // raw value (what the profile and the G-code hold) -> percent field + raw box
+        ip.setv = raw => {
+            let r = Math.max(0, Math.min(255, Math.round(parseFloat(raw) || 0)));
+            ip._raw = r;
+            ip.value = Math.round(r * 100 / 255);
+            box.value = r;
+        };
+        box.addEventListener('keydown', ev => {
+            const k = ev.key;
+            if (k === 'Enter') return box.blur();
+            if ((k >= '0' && k <= '9') || k === 'Backspace' || k === 'Delete' || k === 'ArrowLeft' ||
+                k === 'ArrowRight' || k === 'Tab' || ev.metaKey || ev.ctrlKey) return;
+            ev.preventDefault();
+        });
+        box.addEventListener('blur', () => {
+            ip.setv(box.value === '' ? ip._raw : parseInt(box.value));
+            ip.dispatchEvent(new Event('blur'));
+        });
+        // follow the enabled state of the percent field (disabled in the slice view)
+        new MutationObserver(() => { box.disabled = ip.disabled; })
+            .observe(ip, { attributes: true, attributeFilter: [ 'disabled' ] });
+    }
+
     // the thin fraction is edited as the base percentage (base % = 100 - top %)
     if (ui.sliceSupportThinFraction) {
         const frac = ui.sliceSupportThinFraction;

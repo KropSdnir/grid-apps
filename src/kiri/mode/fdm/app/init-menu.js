@@ -89,6 +89,20 @@ function pillarsOn() {
 }
 
 // the thin fraction (share of the column height that is the thin top) is edited as the
+// fan speeds are edited as a percent (0-100); the saved value stays the raw 0-255 PWM value
+// (M106 S, profiles, devices). The field keeps the exact raw value while its percent is
+// untouched, so loading a raw value that is not a whole percent never changes it
+function fanToRaw() {
+    let nv = this.value !== '' ? parseInt(this.value) : 0;
+    if (isNaN(nv)) nv = 0;
+    nv = Math.max(0, Math.min(100, nv));
+    let raw = (this._raw !== undefined && Math.round(this._raw * 100 / 255) === nv) ? this._raw : Math.round(nv * 255 / 100);
+    this._raw = raw;
+    this.value = nv;
+    if (this._rawBox) this._rawBox.value = raw;
+    return raw;
+}
+
 // base percentage: base % = 100 - top %. shown on the field, stored as the fraction
 function baseToFraction() {
     let nv = this.value !== '' ? parseFloat(this.value) : 0;
@@ -138,7 +152,7 @@ export function menu() {
     outputDraftShield:   newBoolean(LANG.fr_draf_s, onBooleanClick, {title:LANG.fr_draf_l, trigger, show:() => isNotBelt()}),
     _____:               newGroup(LANG.fc_menu, $('fdm-cool'), { modes:FDM, driven, hideable, separator, group:"fdm-cool" }),
     outputFanLayer:      newInput(LANG.ou_fanl_s, { title:LANG.ou_fanl_l, convert:toInt,   bound:bound(0,255) }),
-    outputFanSpeed:      newInput(LANG.ou_fans_s, {title:LANG.ou_fans_l, convert:toInt, bound:bound(0,255)}),
+    outputFanSpeed:      newInput(LANG.ou_fanp_s, {title:LANG.ou_fanp_l, convert:fanToRaw, bound:bound(0,100), size:3}),
     outputMinLayerTime:  newInput(LANG.ou_layt_s, { title:LANG.ou_layt_l, convert:toInt,   bound:bound(0,200) }),
     _____:               newGroup(LANG.sp_menu, $('fdm-support'), { modes:FDM, driven, hideable, separator, group:"fdm-supp" }),
     sliceSupportType:    newSelect(LANG.sp_type_s, {title:LANG.sp_type_l, trigger}, "support"),
@@ -200,7 +214,7 @@ export function menu() {
     firstLayerNozzleTemp:newInput(LANG.fl_nozl_s, {title:LANG.fl_nozl_l, convert:toInt,   show:isNotBelt}),
     firstLayerBedTemp:   newInput(LANG.fl_bedd_s, {title:LANG.fl_bedd_l, convert:toInt,   show:isNotBelt}),
     separator:           newBlank({ class:"set-sep", driven }),
-    firstLayerFanSpeed:  newInput(LANG.ou_fans_s, {title:LANG.ou_fans_l, convert:toInt,   bound:bound(0,255), show:isBelt}),
+    firstLayerFanSpeed:  newInput(LANG.ou_fanp_s, {title:LANG.ou_fanp_l, convert:fanToRaw, bound:bound(0,100), show:isBelt, size:3}),
     firstLayerYOffset:   newInput(LANG.fl_zoff_s, {title:LANG.fl_zoff_l, convert:toFloat, show:isBelt}),
     firstLayerFlatten:   newInput(LANG.fl_flat_s, {title:LANG.fl_flat_l, convert:toFloat, show:isBelt}),
     firstLayerBeltFact:  newInput(LANG.fl_mult_s, {title:LANG.fl_mult_l, convert:toFloat, bound:bound(0, 2), show:isBelt}),
