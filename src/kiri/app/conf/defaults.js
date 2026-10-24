@@ -365,6 +365,7 @@ export const conf = {
                 sliceSupportMinArea: 0,
                 sliceSupportMinAreaPct: 0,
                 sliceSupportHole: 0,
+                sliceSupportHoleDepth: 3,
                 sliceSupportFlush: 0,
                 sliceSupportThinFraction: 0,
                 sliceSupportFinGap: 0,

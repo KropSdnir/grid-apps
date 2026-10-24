@@ -532,7 +532,7 @@ export function sliceOne(settings, widget, onupdate, ondone) {
                 // sliceSupportHole: the roof of a small closed hole (a hole in this
                 // layer that the layer above covers) is bridged, not supported. cut
                 // the hole areas out of the overhang so no shadow starts there
-                if (holeMax > 0 && bridge.length) {
+                if (holeMax > 0 && bridge.length && !(process.sliceSupportHoleDepth > 0)) {
                     let holes = [];
                     for (let poly of bot) {
                         for (let hole of poly.inner || []) {
@@ -1179,7 +1179,11 @@ export function sliceOne(settings, widget, onupdate, ondone) {
         // layers (the thin zone depth) out of the support
         if (process.sliceSupportHole > 0 && supportDensity) {
             let holeMax = process.sliceSupportHole;
-            let zoneLayers = Math.max(1, Math.round((process.sliceSupportThinZone || 3) / sliceHeight));
+            // depth below the mouth in which the hole footprint is kept free: its own
+            // setting (mm), 0 = the thin zone length. a long depth would carve the hole
+            // footprint as a vertical shaft down the whole pedestal
+            let holeDepth = process.sliceSupportHoleDepth > 0 ? process.sliceSupportHoleDepth : (process.sliceSupportThinZone || 3);
+            let zoneLayers = Math.max(1, Math.round(holeDepth / sliceHeight));
             let minArea = lineWidth * lineWidth;
             for (let slice of slices) {
                 let polys = (slice.supports || []).filter(p => !p.solidPlate);

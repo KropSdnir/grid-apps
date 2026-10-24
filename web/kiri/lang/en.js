@@ -547,6 +547,8 @@ self.lang['en-us'] = {
     sp_fing_l:      ["belt printers: target gap between fin","columns in mm. columns are spread evenly","across each support region with one on","each edge: 5 to 10 is typical","0 to disable"],
     sp_flsh_s:      "flush edge",
     sp_flsh_l:      ["run one continuous support line along","the edge of the support, so it reaches","the outline of the part underside","value = clearance to that edge in mm","(0.2 typical), 0 to disable"],
+    sp_hdep_s:      "hole depth",
+    sp_hdep_l:      ["hole bridge: how far below the mouth of a","hole (mm) its footprint is kept free of support,","so only the crescent under the opening is","skipped and the pedestal stays solid.","0 = use the thin zone length"],
     sp_flow_s:      "support flow",
     sp_flow_l:      ["extrusion multiplier for support lines","0 = use the fill multiplier"],
     sp_xpnd_s:      "expand",
