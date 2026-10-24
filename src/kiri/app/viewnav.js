@@ -16,7 +16,10 @@ const DEG = Math.PI / 180;
 const FOV = 35; // matches moto/space.js `perspective`
 const MIN_STEP = 0.001; // degrees, and mm for the move step
 const MAX_STEP = 90;
-const NARROW = 700; // below this width the overlay is a small button
+const NARROW = 700; // below this width the overlay starts as a small button
+const W_FULL = 248; // expanded width in px (see index.css)
+const SLIDER_BAND = 48; // px kept clear above the layer slider along the bottom edge
+const GAP = 8;
 const HOLD_DELAY = 400, HOLD_EVERY = 60; // ms, same as the layer slider buttons
 const ANGLE_PRESETS = [15, 5, 1, 0.5, 0.1, 0.05, 0.01, 0.005, 0.001];
 const MOVE_PRESETS = [50, 10, 5, 1, 0.5, 0.1, 0.05, 0.01];
@@ -33,7 +36,7 @@ const VIEWS = {
 
 let root, body, cube, ui = {}, inited = false;
 let step = 1, dstep = 5;
-let transientOpen = false, forcedMin = false, lastSig = '', frame = 0;
+let lastSig = '', lastJob = '', frame = 0;
 
 const local = {
     get(k) { try { return api.local.get(KEY + k) } catch (e) { return null } },
@@ -278,28 +281,74 @@ function isNarrow() {
     return window.innerWidth < NARROW;
 }
 
-/** the expanded box would land on top of the job info box */
-function crowded(left, top, h) {
-    const j = document.getElementById('job-info');
-    if (!j || j.style.display === 'none') return false;
-    const r = j.getBoundingClientRect();
-    return r.width > 0 && left < r.right + 8 && top < r.bottom && top + h > r.top;
-}
-
+/** collapsed? the choice is saved separately for narrow windows (default there: collapsed to a small button) */
 function isMin() {
-    return forcedMin ? !transientOpen : local.get('-min') === 'on';
+    if (window.innerWidth < W_FULL + 24) return true; // cannot fit expanded
+    const v = local.get(isNarrow() ? '-min-narrow' : '-min');
+    return isNarrow() ? v !== 'off' : v === 'on';
 }
 
-/** top: under the toolbar; right: left of the right panel; 16px margins */
-function place() {
-    if (!root || root.style.display === 'none') return;
-    const bar = document.getElementById('mode-tools');
-    let top = 45;
-    if (bar) {
-        const kids = [...bar.children].filter(k => k.offsetHeight > 0);
-        for (const k of kids) top = Math.max(top, k.getBoundingClientRect().bottom);
+function applyMin() {
+    const min = isMin();
+    root.classList.toggle('vn-min', min);
+    root.classList.toggle('vn-tiny', min && isNarrow());
+    document.getElementById('vn-fold-ico').textContent = min ? '\u25B8' : '\u25BE';
+}
+
+function toggleMin() {
+    local.set(isNarrow() ? '-min-narrow' : '-min', isMin() ? 'off' : 'on');
+    place();
+}
+
+/** the job info box, when it is on screen */
+function jobRect() {
+    const j = document.getElementById('job-info');
+    if (!j || getComputedStyle(j).display === 'none') return null;
+    const r = j.getBoundingClientRect();
+    return r.width > 0 ? r : null;
+}
+
+/** keep the whole box inside the window and clear of the layer slider band (same rule as the job info box) */
+function clampPos(x, y, w, h) {
+    return [
+        Math.min(Math.max(0, x), Math.max(0, window.innerWidth - w)),
+        Math.min(Math.max(0, y), Math.max(0, window.innerHeight - h - SLIDER_BAND))
+    ];
+}
+
+function hits(x, y, w, h, J) {
+    return x < J.right && x + w > J.left && y < J.bottom && y + h > J.top;
+}
+
+/** the job info box is never covered: if the navigator lands on it, move the navigator to the nearest free side */
+function resolve(x, y, w, h, J) {
+    if (!J || !hits(x, y, w, h, J)) return [x, y];
+    const cands = [
+        [x, J.top - h - GAP], [x, J.bottom + GAP],
+        [J.left - w - GAP, y], [J.right + GAP, y]
+    ].map(c => clampPos(c[0], c[1], w, h));
+    let best, bd = Infinity;
+    for (const c of cands) {
+        if (hits(c[0], c[1], w, h, J)) continue;
+        const d = Math.abs(c[0] - x) + Math.abs(c[1] - y);
+        if (d < bd) { bd = d; best = c; }
     }
-    top += 8;
+    return best || cands[0];
+}
+
+function savedPos() {
+    const raw = local.get('-pos');
+    if (!raw) return null;
+    const p = String(raw).split(',').map(parseFloat);
+    return p.length === 2 && p.every(Number.isFinite) ? p : null;
+}
+
+/** default spot: stacked directly above the job info box (right edges aligned), else under the toolbar at the top right */
+function defaultPos(w, h, J) {
+    if (J) return [J.right - w, Math.max(45 + GAP, J.top - h - GAP)];
+    let top = 45;
+    const bar = document.getElementById('mode-tools');
+    if (bar) for (const k of bar.children) if (k.offsetHeight > 0) top = Math.max(top, k.getBoundingClientRect().bottom);
     // stay left of the right panel and of the speed legend that appears beside it in previews
     let right = 16;
     for (const id of ['panel-right', 'speedbar']) {
@@ -308,41 +357,62 @@ function place() {
         const r = e.getBoundingClientRect();
         if (r.width > 0 && r.left < window.innerWidth) right = Math.max(right, window.innerWidth - r.left + 16);
     }
-    root.style.top = top + 'px';
-    root.style.right = right + 'px';
-    root.style.maxHeight = Math.max(80, window.innerHeight - top - 60) + 'px';
-    const width = 248, left = window.innerWidth - right - width;
-    const was = forcedMin;
-    forcedMin = isNarrow() || crowded(left, top, root.classList.contains('vn-min') ? 260 : root.offsetHeight);
-    if (forcedMin !== was) transientOpen = false;
-    applyMin();
-    // collapsed button on a very narrow window: step below the job info box instead of covering it
-    if (root.classList.contains('vn-min')) {
-        const j = document.getElementById('job-info');
-        if (j && j.style.display !== 'none') {
-            const jr = j.getBoundingClientRect(), nr = root.getBoundingClientRect();
-            if (jr.width > 0 && nr.left < jr.right + 8 && nr.right > jr.left && top < jr.bottom + 8 && top + nr.height > jr.top) {
-                root.style.top = (jr.bottom + 8) + 'px';
-            }
-        }
-    }
+    return [window.innerWidth - right - w, top + GAP];
 }
 
-function applyMin() {
-    const min = isMin();
-    root.classList.toggle('vn-min', min);
-    document.getElementById('vn-fold-ico').textContent = min ? '▶' : '▼';
-    document.getElementById('vn-fold-txt').textContent = min ? 'view' : 'view navigator';
+/** position: the dragged spot if the user moved it, else above the job info box (following it) */
+function place() {
+    if (!root || root.style.display === 'none') return;
+    applyMin();
+    root.style.right = 'auto';
+    root.style.maxHeight = Math.max(80, window.innerHeight - 45 - SLIDER_BAND) + 'px';
+    const w = root.offsetWidth, h = root.offsetHeight;
+    const J = jobRect();
+    const tiny = root.classList.contains('vn-tiny');
+    const sp = tiny ? null : savedPos();
+    let [x, y] = sp || defaultPos(w, h, J);
+    [x, y] = clampPos(x, y, w, h);
+    [x, y] = resolve(x, y, w, h, J);
+    root.style.left = x + 'px';
+    root.style.top = y + 'px';
 }
 
-function toggleMin() {
-    if (forcedMin) {
-        transientOpen = !transientOpen;
-    } else {
-        local.set('-min', isMin() ? 'off' : 'on');
-    }
-    applyMin();
-    place();
+/** grip / title bar: drag to move (saved), double-click to collapse, double-click the grip for the default spot */
+function bindBar() {
+    const bar = document.getElementById('vn-bar');
+    const fold = document.getElementById('vn-fold');
+    const grip = document.getElementById('vn-grip');
+    fold.addEventListener('pointerdown', ev => ev.stopPropagation());
+    fold.addEventListener('dblclick', ev => ev.stopPropagation());
+    fold.addEventListener('click', ev => { ev.stopPropagation(); toggleMin() });
+    bar.addEventListener('dblclick', toggleMin);
+    grip.addEventListener('dblclick', ev => {
+        ev.stopPropagation();
+        local.set('-pos', '');
+        place();
+    });
+    bar.addEventListener('pointerdown', ev => {
+        if (ev.button !== 0 || root.classList.contains('vn-tiny')) return;
+        const dx = ev.clientX - root.offsetLeft, dy = ev.clientY - root.offsetTop;
+        const w = root.offsetWidth, h = root.offsetHeight;
+        try { bar.setPointerCapture(ev.pointerId) } catch (e) { }
+        bar.onpointermove = mv => {
+            const [x, y] = clampPos(mv.clientX - dx, mv.clientY - dy, w, h);
+            root.style.left = x + 'px';
+            root.style.top = y + 'px';
+        };
+        bar.onpointerup = bar.onpointercancel = up => {
+            bar.onpointermove = bar.onpointerup = bar.onpointercancel = null;
+            try { bar.releasePointerCapture(up.pointerId) } catch (e) { }
+            // dropped on the job info box: nudge to the nearest free side, then remember it
+            let [x, y] = clampPos(root.offsetLeft, root.offsetTop, w, h);
+            [x, y] = resolve(x, y, w, h, jobRect());
+            root.style.left = x + 'px';
+            root.style.top = y + 'px';
+            local.set('-pos', Math.round(x) + ',' + Math.round(y));
+        };
+        ev.preventDefault();
+    });
 }
 
 function setIcon(on) {
@@ -355,7 +425,10 @@ function setIcon(on) {
 function tick() {
     requestAnimationFrame(tick);
     if (!root || root.style.display === 'none' || !space().internals().camera) return;
-    if (++frame % 30 === 0) place();
+    // follow the job info box when it moves, appears or is resized
+    const j = document.getElementById('job-info');
+    const js = j ? [j.style.display, j.offsetLeft, j.offsetTop, j.offsetWidth, j.offsetHeight].join() : '';
+    if (js !== lastJob || ++frame % 30 === 0) { lastJob = js; place(); }
     let r;
     try { r = read() } catch (e) { return }
     const sig = [r.theta, r.phi, r.dist, r.ortho].join('|');
@@ -409,7 +482,7 @@ function build() {
     for (const b of root.querySelectorAll('[data-view]')) {
         b.addEventListener('click', ev => { root.focus({ preventScroll: true }); snap(b.dataset.view) });
     }
-    document.getElementById('vn-fold').addEventListener('click', toggleMin);
+    bindBar();
     root.addEventListener('keydown', key);
     // keep the camera controls from seeing wheel / pointer events meant for this box
     root.addEventListener('wheel', ev => ev.stopPropagation(), { passive: true });

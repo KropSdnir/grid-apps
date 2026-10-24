@@ -191,8 +191,11 @@
 
     <!-- view navigator overlay: cube, orbit/pan/zoom steps, exact angles (src/kiri/app/viewnav.js) -->
     <div id="view-nav" tabindex="0" style="display:none" title="view navigator&#13;arrow keys orbit while this box has focus (Alt = pan)&#13;Shift = step / 10, Ctrl = step x 10">
-        <div id="vn-bar">
-            <button id="vn-fold" class="vn-btn" type="button" tabindex="-1" title="collapse / expand"><span id="vn-fold-ico">&#9660;</span><span id="vn-fold-txt">view</span></button>
+        <div id="vn-bar" title="drag to move, double-click to collapse">
+            <span id="vn-grip" title="drag to move (double-click: back to the default spot above the job info box)">&#9776;</span>
+            <span id="vn-title">view navigator</span>
+            <span id="vn-grow"></span>
+            <span id="vn-fold" title="collapse / expand"><span id="vn-fold-ico">&#9662;</span><span id="vn-fold-txt">view</span></span>
         </div>
         <div id="vn-body">
             <div class="vn-top">
