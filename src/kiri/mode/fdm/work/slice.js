@@ -1017,6 +1017,11 @@ export function sliceOne(settings, widget, onupdate, ondone) {
                 trackupdate(i / t, div[1].lo, div[1].hi);
             });
         }
+        // columns modes: nothing may hang in mid-air (see anchorFills)
+        let anchor = process.sliceSupportAnchor === undefined || process.sliceSupportAnchor === null ? 1.0 : process.sliceSupportAnchor;
+        if (colCfg && anchor > 0) {
+            anchorFills(slices, anchor, lineWidth, colCfg.shear * sliceHeight, widget.belt);
+        }
         profileEnd();
     }
 
@@ -2218,6 +2223,182 @@ function supportPolyFill({ promises, polys, lineWidth, density, z, isBelt, angle
 }
 
 /**
+ * Support only where it is held up. After the fills, each layer (bottom up) is tested
+ * against what is printed under it: support lines of the two layers below, the part
+ * of the layer below, and the belt plane, all within tol mm (a column moves dy per
+ * layer sideways). Lines are followed along their chains (rim loops, ties, ribs): a
+ * stretch that is not held up is a bridge when both ends are held up and it is at most
+ * 12 mm long, anything else (a cantilever, a floating piece) is cut away. Plate
+ * polygons are left alone.
+ *
+ * @param {Slice[]} slices bottom up
+ * @param {number} tol how far from supporting material a line may be (mm)
+ * @param {number} lw line width
+ * @param {number} dy sideways move of a vertical column per layer in y (mm)
+ * @param {object} belt belt data (slope), if any
+ * @returns {number} mm of line removed
+ */
+function anchorFills(slices, tol, lw, dy, belt) {
+    const G = 0.25, BRIDGE = 12, R = Math.max(1, Math.ceil(tol / G));
+    let minx = Infinity, maxx = -Infinity, miny = Infinity, maxy = -Infinity;
+    for (let slice of slices) {
+        for (let p of slice.supports || []) {
+            minx = Math.min(minx, p.bounds.minx); maxx = Math.max(maxx, p.bounds.maxx);
+            miny = Math.min(miny, p.bounds.miny); maxy = Math.max(maxy, p.bounds.maxy);
+        }
+        for (let p of slice.topPolys() || []) {
+            minx = Math.min(minx, p.bounds.minx); maxx = Math.max(maxx, p.bounds.maxx);
+            miny = Math.min(miny, p.bounds.miny); maxy = Math.max(maxy, p.bounds.maxy);
+        }
+    }
+    if (!isFinite(minx)) return 0;
+    minx -= 4; miny -= 4;
+    let nx = Math.ceil((maxx + 4 - minx) / G) + 2, ny = Math.ceil((maxy + 4 - miny) / G) + 2;
+    let idx = (x, y) => {
+        let ix = Math.round((x - minx) / G), iy = Math.round((y - miny) / G);
+        return ix < 0 || iy < 0 || ix >= nx || iy >= ny ? -1 : iy * nx + ix;
+    };
+    let rl = Math.max(1, Math.round(lw / 2 / G));
+    let stamp = (m, x, y) => {
+        let ix = Math.round((x - minx) / G), iy = Math.round((y - miny) / G);
+        for (let a = -rl; a <= rl; a++) for (let b = -rl; b <= rl; b++) {
+            let jx = ix + a, jy = iy + b;
+            if (jx >= 0 && jy >= 0 && jx < nx && jy < ny) m[jy * nx + jx] = 1;
+        }
+    };
+    let stampLine = (m, a, b) => {
+        let n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / (G * 0.8)));
+        for (let i = 0; i <= n; i++) stamp(m, a.x + (b.x - a.x) * i / n, a.y + (b.y - a.y) * i / n);
+    };
+    // even-odd scanline fill of the rings of polygons
+    let fillPolys = (m, polys) => {
+        let rings = [];
+        for (let p of polys) {
+            rings.push(p.points);
+            for (let h of p.inner || []) rings.push(h.points);
+        }
+        for (let iy = 0; iy < ny; iy++) {
+            let y = miny + iy * G, xs = [];
+            for (let r of rings) {
+                for (let i = 0, n = r.length; i < n; i++) {
+                    let a = r[i], b = r[(i + 1) % n];
+                    if ((a.y <= y && b.y > y) || (b.y <= y && a.y > y)) xs.push(a.x + (y - a.y) / (b.y - a.y) * (b.x - a.x));
+                }
+            }
+            if (xs.length < 2) continue;
+            xs.sort((u, v) => u - v);
+            for (let k = 0; k + 1 < xs.length; k += 2) {
+                let i0 = Math.max(0, Math.ceil((xs[k] - minx) / G)), i1 = Math.min(nx - 1, Math.floor((xs[k + 1] - minx) / G));
+                for (let ix = i0; ix <= i1; ix++) m[iy * nx + ix] = 1;
+            }
+        }
+    };
+    let dilate = m => {
+        let t = new Uint8Array(m.length), o = new Uint8Array(m.length);
+        for (let iy = 0; iy < ny; iy++) {
+            for (let ix = 0; ix < nx; ix++) {
+                if (!m[iy * nx + ix]) continue;
+                for (let a = Math.max(0, ix - R); a <= Math.min(nx - 1, ix + R); a++) t[iy * nx + a] = 1;
+            }
+        }
+        for (let iy = 0; iy < ny; iy++) {
+            for (let ix = 0; ix < nx; ix++) {
+                if (!t[iy * nx + ix]) continue;
+                for (let b = Math.max(0, iy - R); b <= Math.min(ny - 1, iy + R); b++) o[b * nx + ix] = 1;
+            }
+        }
+        return o;
+    };
+    let held = [];   // dilated (printed support or part) of each processed layer
+    let removed = 0;
+    let key = pt => Math.round(pt.x * 20) + ',' + Math.round(pt.y * 20);
+    slices.forEach((slice, j) => {
+        let skewy = belt ? slice.z * belt.slope : Infinity;
+        let isHeld = (x, y) => {
+            if (y >= skewy - tol) return true;
+            for (let k = 1; k <= 2; k++) {
+                let m = held[j - k];
+                if (!m) continue;
+                let i = idx(x, y + dy * k);
+                if (i >= 0 && m[i]) return true;
+            }
+            return false;
+        };
+        let printed = new Uint8Array(nx * ny);
+        for (let poly of slice.supports || []) {
+            let fill = poly.fill;
+            if (poly.solidPlate || !fill || fill.length < 2 || j < 1) {
+                if (fill) for (let i = 0; i + 1 < fill.length; i += 2) stampLine(printed, fill[i], fill[i + 1]);
+                continue;
+            }
+            // split every line where it changes between held and not held
+            let edges = [];
+            for (let i = 0; i + 1 < fill.length; i += 2) {
+                let a = fill[i], b = fill[i + 1];
+                let len = Math.hypot(b.x - a.x, b.y - a.y);
+                let m = Math.max(1, Math.ceil(len / G));
+                let flags = [];
+                for (let q = 0; q <= m; q++) flags.push(isHeld(a.x + (b.x - a.x) * q / m, a.y + (b.y - a.y) * q / m));
+                // an edge is held when most of its samples are
+                let q = 0;
+                while (q < m) {
+                    let q0 = q, f = flags[q] && flags[q + 1];
+                    while (q + 1 < m && (flags[q + 1] && flags[q + 2]) === f) q++;
+                    q++;
+                    let p1 = a.clone(), p2 = a.clone();
+                    p1.x = a.x + (b.x - a.x) * q0 / m; p1.y = a.y + (b.y - a.y) * q0 / m;
+                    p2.x = a.x + (b.x - a.x) * q / m; p2.y = a.y + (b.y - a.y) * q / m;
+                    p1.index = p2.index = a.index;
+                    edges.push({ p1, p2, held: f, len: len * (q - q0) / m, k1: key(p1), k2: key(p2) });
+                }
+            }
+            // components of edges that are not held (through shared end points)
+            let byNode = new Map();
+            edges.forEach((ed, i) => {
+                for (let kk of [ ed.k1, ed.k2 ]) {
+                    if (!byNode.has(kk)) byNode.set(kk, []);
+                    byNode.get(kk).push(i);
+                }
+            });
+            let state = new Uint8Array(edges.length);   // 1 = visited free edge, 2 = cut
+            for (let i0 = 0; i0 < edges.length; i0++) {
+                if (edges[i0].held || state[i0]) continue;
+                let comp = [], stack = [ i0 ], contacts = [], total = 0;
+                state[i0] = 1;
+                while (stack.length) {
+                    let i = stack.pop();
+                    comp.push(i);
+                    total += edges[i].len;
+                    for (let [ kk, pt ] of [ [ edges[i].k1, edges[i].p1 ], [ edges[i].k2, edges[i].p2 ] ]) {
+                        for (let o of byNode.get(kk)) {
+                            if (edges[o].held) {
+                                if (!contacts.some(c => Math.hypot(c.x - pt.x, c.y - pt.y) < 3)) contacts.push(pt);
+                            } else if (!state[o]) {
+                                state[o] = 1;
+                                stack.push(o);
+                            }
+                        }
+                    }
+                }
+                // a free stretch survives as a bridge: held at two places, short
+                let ok = total <= tol || (contacts.length >= 2 && total <= BRIDGE);
+                if (!ok) {
+                    for (let i of comp) state[i] = 2;
+                    removed += total;
+                }
+            }
+            let keepPts = [];
+            edges.forEach((ed, i) => { if (state[i] !== 2 && ed.len > 0.01) keepPts.push(ed.p1, ed.p2); });
+            poly.fill = keepPts;
+            for (let i = 0; i + 1 < keepPts.length; i += 2) stampLine(printed, keepPts[i], keepPts[i + 1]);
+        }
+        fillPolys(printed, slice.topPolys() || []);
+        held[j] = dilate(printed);
+    });
+    return removed;
+}
+
+/**
  * Settings for the belt 'columns' support mode
  */
 function columnsConfig(process) {
@@ -2322,9 +2503,17 @@ function groupSupportPolys(polys) {
 }
 
 function assignColumnRegions(polys, cfg, lineWidth) {
+    let prevList = cfg.lastRegions || [], nextList = [];
+    cfg.lastRegions = nextList;
     for (let members of groupSupportPolys(polys)) {
+        // the extent of a region comes from its real pieces: a sliver (a strip in a channel
+        // of the part, a tongue under a fillet) joins the cluster and would move the columns
+        let solid = members.filter(p => {
+            let per = p.perimeter();
+            return per > 0 && 2 * Math.abs(p.area()) / per >= 3 * lineWidth;
+        });
         let minx = Infinity, maxx = -Infinity;
-        for (let p of members) {
+        for (let p of solid.length ? solid : members) {
             minx = Math.min(minx, p.bounds.minx);
             maxx = Math.max(maxx, p.bounds.maxx);
         }
@@ -2337,6 +2526,15 @@ function assignColumnRegions(polys, cfg, lineWidth) {
             region.centers = [];
             for (let i = 0; i < lay.n; i++) region.centers.push(x0 + lay.wb / 2 + lay.pitch * i);
         }
+        // the same region on the layer below keeps its columns: the extent of a cluster
+        // changes a little from layer to layer (a tongue joins or leaves) and the columns
+        // would otherwise stand a few mm beside the ones below, floating
+        let prev = prevList.find(r => {
+            let ov = Math.min(r.maxx, region.maxx) - Math.max(r.minx, region.minx);
+            return ov > 0.6 * Math.min(r.maxx - r.minx, region.maxx - region.minx) && Math.abs(r.minx - region.minx) < 5 && Math.abs(r.maxx - region.maxx) < 5;
+        });
+        if (prev) region = prev;
+        nextList.push(region);
         for (let p of members) p.colRegion = region;
     }
 }
@@ -2351,7 +2549,7 @@ function assignColumnRegions(polys, cfg, lineWidth) {
  */
 function supportColumnFill(poly, cfg, z, lineWidth, tieLayer, tieSpacing) {
     let region = poly.colRegion;
-    if (cfg.style === 'pillars' && cfg.grids) {
+    if (cfg.style === 'pillars' && cfg.grids && cfg.grids.length && !cfg.noGrid) {
         return supportPillarFill(poly, cfg, z, lineWidth, tieLayer, tieSpacing);
     }
     let out = [];
@@ -2498,6 +2696,11 @@ function planPillarGrids(slices, cfg, lw) {
         let cl = layoutAxis(x1 - x0, ap.gap, ap.wb, ap.wt, ap.count, lw);
         g.cols = { x0, x1, n: cl.n, pitch: cl.pitch, wb: cl.wb, wt: cl.wt };
         // rows along the belt: pillar length = pillarLen (base) or the column width
+        if (cfg.style !== 'pillars') {
+            // ribs: one row along the whole underside, clipped to the support polygon
+            g.rows = { u0: g.u0 - 0.5, u1: g.u1 + 0.5, n: 1, pitch: 0, wb: g.u1 - g.u0 + 1, wt: g.u1 - g.u0 + 1 };
+            continue;
+        }
         let u0 = g.u0 + cfg.flush, u1 = g.u1 - cfg.flush;
         let rp = axisParams(cfg, u1 - u0, cfg.rowGap);
         let Lb = cfg.pillarLen > 0 ? cfg.pillarLen : cl.wb;
@@ -2575,6 +2778,7 @@ function supportPillarFill(poly, cfg, z, lw, tieLayer, tieSpacing) {
     let o = { flat: true, z, wasm: true };
     let minside = (2 * cfg.shells + 1) * step;
     let rects = [];
+    let cells = [];
     for (let g of cfg.grids) {
         // does this grid reach the polygon?
         if (g.x1 < b.minx || g.x0 > b.maxx) continue;
@@ -2587,6 +2791,13 @@ function supportPillarFill(poly, cfg, z, lw, tieLayer, tieSpacing) {
             for (let [ u0, u1 ] of rowS) {
                 let y0 = u0 - shear * z, y1 = u1 - shear * z;
                 if (y1 < b.miny - 0.01 || y0 > b.maxy + 0.01 || x1 < b.minx || x0 > b.maxx) continue;
+                // grids of neighbouring undersides can overlap: never print a cell twice
+                let area = (x1 - x0) * (y1 - y0);
+                if (cells.some(c => {
+                    let ov = Math.max(0, Math.min(x1, c[1]) - Math.max(x0, c[0])) * Math.max(0, Math.min(y1, c[3]) - Math.max(y0, c[2]));
+                    return ov > 0.5 * Math.min(area, c[4]);
+                })) continue;
+                cells.push([ x0, x1, y0, y1, area ]);
                 let rect = newPolygon().centerRectangle(newPoint((x0 + x1) / 2, (y0 + y1) / 2, z), x1 - x0, y1 - y0);
                 let shapes = POLY.trimTo([ poly.clone(true) ], [ rect ]) || [];
                 shapes = shapes.filter(sh => Math.abs(sh.area()) > lw * lw * 0.6);
@@ -2624,8 +2835,21 @@ function supportPillarFill(poly, cfg, z, lw, tieLayer, tieSpacing) {
                 }
             }
         }
+        // tie layers: ribs get cross lines every tieSpacing mm
+        if (tieLayer && cfg.style !== 'pillars' && colS.length > 1) {
+            let inset = POLY.offset([ poly.clone(true) ], -lw / 3, o) || [];
+            let box = newPolygon().centerRectangle(
+                newPoint((g.x0 + g.x1) / 2, ((g.u0 + g.u1) / 2) - shear * z, z), g.x1 - g.x0, g.u1 - g.u0);
+            inset = POLY.trimTo(inset, [ box ]) || [];
+            if (inset.length) {
+                let lines = [];
+                POLY.fillArea(inset, 0, tieSpacing, lines);
+                for (let k = 0; k + 1 < lines.length; k += 2) pair(lines[k], lines[k + 1]);
+                idx++;
+            }
+        }
         // tie layers: the grid lines through the pillar centers, along and across
-        if (tieLayer && (colS.length > 1 || rowS.length > 1)) {
+        if (tieLayer && cfg.style === 'pillars' && (colS.length > 1 || rowS.length > 1)) {
             let inset = POLY.offset([ poly.clone(true) ], -lw / 3, o) || [];
             let box = newPolygon().centerRectangle(
                 newPoint((g.x0 + g.x1) / 2, ((g.u0 + g.u1) / 2) - shear * z, z), g.x1 - g.x0, g.u1 - g.u0);
@@ -2646,7 +2870,7 @@ function supportPillarFill(poly, cfg, z, lw, tieLayer, tieSpacing) {
     if (rest.length) {
         let rests = rest.filter(q => Math.abs(q.area()) > 4);
         if (rests.length) {
-            let rcfg = Object.assign({}, cfg, { style: 'ribs', grids: null });
+            let rcfg = Object.assign({}, cfg, { style: 'ribs', grids: null, noGrid: true });
             for (let q of rests) q.thinSupport = thin;
             assignColumnRegions(rests, rcfg, lw);
             for (let q of rests) {

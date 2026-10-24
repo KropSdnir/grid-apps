@@ -382,6 +382,7 @@ export const conf = {
                 sliceSupportColRim: 1,
                 sliceSupportRimStyle: "continuous",
                 sliceSupportRetract: 0,
+                sliceSupportAnchor: 1,
                 outputSupportMult: 0,
                 sliceSupportSpacing: 0,
                 sliceSupportMinLine: 0,

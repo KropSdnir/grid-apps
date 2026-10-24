@@ -175,6 +175,7 @@ export function menu() {
     sliceSupportColTop:  newInput(LANG.spb_topw_s, {title:LANG.spb_topw_l, convert:toFloat, bound:bound(0,500), show:colsOn}),
     sliceSupportColShells:newInput(LANG.spb_shel_s, {title:LANG.spb_shel_l, convert:toInt,   bound:bound(1,5), show:colsOn}),
     sliceSupportColFill: newInput(LANG.spb_fill_s, {title:LANG.spb_fill_l, convert:toFloat, bound:bound(0,100), show:colsOn}),
+    sliceSupportAnchor:  newInput(LANG.spb_anch_s, {title:LANG.spb_anch_l, convert:toFloat, bound:bound(0,10), show:colsOn}),
     sliceSupportColRim:  newInput(LANG.spb_rim_s, {title:LANG.spb_rim_l, convert:toInt, bound:bound(0,2), show:colsOn}),
     sliceSupportRimStyle:newSelect(LANG.spb_rims_s, {title:LANG.spb_rims_l, show:colsOn}, [ { name:"continuous" }, { name:"perforated" }, { name:"off" } ]),
     sliceSupportColGap:  newInput(LANG.spb_gap_s, {title:LANG.spb_gap_l, convert:toFloat, bound:bound(0,500), show:pillarsOn}),
