@@ -524,6 +524,8 @@ self.lang['en-us'] = {
     sp_minp_l:      ["drop support columns whose largest cross","section is smaller than this percent of","the largest support column on the model","scales with model size","0 to disable"],
     sp_hole_s:      "hole bridge",
     sp_hole_l:      ["do not support the roof of a closed","hole smaller than this area, in mm^2:","it is bridged instead, so no pillars","stand inside round holes and tubes","0 to disable"],
+    sp_flsh_s:      "flush edge",
+    sp_flsh_l:      ["run one continuous support line along","the edge of the support, so it reaches","the outline of the part underside","value = clearance to that edge in mm","(0.2 typical), 0 to disable"],
     sp_flow_s:      "support flow",
     sp_flow_l:      ["extrusion multiplier for support lines","0 = use the fill multiplier"],
     sp_xpnd_s:      "expand",

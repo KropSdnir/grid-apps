@@ -991,6 +991,7 @@ export function sliceOne(settings, widget, onupdate, ondone) {
                 minLine: params.sliceSupportMinLine || process.sliceSupportMinLine || 0,
                 tie: params.sliceSupportTie || process.sliceSupportTie || 0,
                 thinLen: process.sliceSupportThin || 0,
+                flush: process.sliceSupportFlush || 0,
                 // pillars stay vertical in the world: the fill grid follows the belt skew
                 phase: widget.belt ? slice.z * widget.belt.slope : 0,
                 isBelt,
@@ -1971,7 +1972,7 @@ function areaFill({ promises: fillQ, polys, angle, spacing, output, minLen, maxL
  * @see CONSTANTS.SUPPORT_AUTO_ANGLE_TALL - Auto angle for tall polygons (1000 = 0°)
  * @see CONSTANTS.SUPPORT_CONNECT_DISTANCE_MULT - Distance multiplier for line connection (2x)
  */
-function layerSupportFill({ promises, slice, lineWidth, density, isBelt, angle, outline, gap, spacingGap, minLine, tie, edge, thinLen, phase }) {
+function layerSupportFill({ promises, slice, lineWidth, density, isBelt, angle, outline, gap, spacingGap, minLine, tie, edge, thinLen, flush, phase }) {
     let polys = slice.supports;
     if (polys) {
         supportPolyFill({
@@ -1986,6 +1987,7 @@ function layerSupportFill({ promises, slice, lineWidth, density, isBelt, angle, 
             minLine,
             edge,
             thinLen,
+            flush,
             phase,
             // every Nth layer prints cross lines (0 degrees) that tie the fins together
             tieLayer: tie > 0 && slice.index >= 0 && slice.index % tie === 0,
@@ -2037,7 +2039,7 @@ function layerSupportFill({ promises, slice, lineWidth, density, isBelt, angle, 
  * @see CONSTANTS.SUPPORT_INSET_RATIO - Inset ratio for fill area (1/3)
  * @see CONSTANTS.SUPPORT_CONNECT_DISTANCE_MULT - Distance multiplier for line connection (2x)
  */
-function supportPolyFill({ promises, polys, lineWidth, density, z, isBelt, angle, outline, spacingGap, minLine, tieLayer, tieSpacing, edge, thinLen, phase }) {
+function supportPolyFill({ promises, polys, lineWidth, density, z, isBelt, angle, outline, spacingGap, minLine, tieLayer, tieSpacing, edge, thinLen, flush, phase }) {
     // calculate fill spacing: an explicit open gap between lines (mm) wins over density
     let spacing = spacingGap > 0 ? lineWidth + spacingGap : lineWidth * (1 / density);
     for (let poly of polys) {
@@ -2129,8 +2131,84 @@ function supportPolyFill({ promises, polys, lineWidth, density, z, isBelt, angle
                 // keep the unconnected lines if joining produced invalid points
                 poly.fill = joined.every(ok) ? joined : poly.fill.filter(ok);
             }
+            // sliceSupportFlush: a continuous line right along the support footprint
+            // (flush > 0: its outer face sits this many mm inside the footprint edge,
+            // which is the part's underside outline, or the clearance line at a wall).
+            // grid lines, dashes and edge fins leave the rim open: dashes have gaps
+            // along the edge and stop up to a dash length short of the ends, so the
+            // outermost bottom layers hang over nothing
+            if (flush > 0 && !outline && !promises && !poly.solidPlate) {
+                supportFlushRim(poly, z, lineWidth, flush);
+            }
         }
     }
+}
+
+/**
+ * sliceSupportFlush: add one continuous line along the edge of a support region
+ * (and around its holes) and drop the fill lines the rim already covers.
+ *
+ * @param {Polygon} poly - support polygon, poly.fill holds its (point pair) lines
+ * @param {number} z - layer z
+ * @param {number} lineWidth - extrusion width in mm
+ * @param {number} flush - clearance in mm between the rim line's outer face and the
+ *                         region edge (0.2 keeps it from fusing to the neighbour)
+ */
+function supportFlushRim(poly, z, lineWidth, flush) {
+    let rims = POLY.offset([ poly ], -(flush + lineWidth / 2), { flat: true, z, wasm: true });
+    if (!rims || !rims.length) return;
+    let rings = [];
+    for (let rim of rims) {
+        rings.push(rim.points);
+        for (let hole of rim.inner || []) rings.push(hole.points);
+    }
+    // ring segments, merged into fewer points: curves from offsets are very dense
+    let segs = [];
+    let minSeg = 0.15;
+    for (let pts of rings) {
+        if (!pts || pts.length < 3) continue;
+        let keep = [ pts[0] ];
+        for (let i = 1; i < pts.length; i++) {
+            if (pts[i].distTo2D(keep[keep.length - 1]) >= minSeg) keep.push(pts[i]);
+        }
+        if (keep.length > 2 && keep[0].distTo2D(keep[keep.length - 1]) < minSeg) keep.pop();
+        if (keep.length < 3) continue;
+        for (let i = 0; i < keep.length; i++) {
+            segs.push([ keep[i], keep[(i + 1) % keep.length] ]);
+        }
+    }
+    if (!segs.length) return;
+    // distance from a point to the nearest rim segment
+    let near = p => {
+        let best = Infinity;
+        for (let [ a, b ] of segs) {
+            let dx = b.x - a.x, dy = b.y - a.y;
+            let l2 = dx * dx + dy * dy;
+            let t = l2 > 0 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2)) : 0;
+            let d = Math.hypot(p.x - (a.x + dx * t), p.y - (a.y + dy * t));
+            if (d < best) best = d;
+        }
+        return best;
+    };
+    // drop fill lines that lie along the rim (both ends within a line width of it
+    // and the middle too); lines that run into the rim from inside are kept
+    let cover = lineWidth * 0.9;
+    let fill = poly.fill, kept = [];
+    for (let i = 0; i + 1 < fill.length; i += 2) {
+        let a = fill[i], b = fill[i + 1];
+        let mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        if (near(a) < cover && near(b) < cover && near(mid) < cover) continue;
+        kept.push(a, b);
+    }
+    // one pair of points per rim segment, numbered along the loop so the fill
+    // ordering walks the rim instead of jumping between segments
+    let base = kept.length ? kept.reduce((m, p) => Math.max(m, p.index || 0), 0) + 1 : 0;
+    segs.forEach(([ a, b ], i) => {
+        let p1 = a.clone(), p2 = b.clone();
+        p1.index = p2.index = base + i;
+        kept.push(p1, p2);
+    });
+    poly.fill = kept;
 }
 
 /**

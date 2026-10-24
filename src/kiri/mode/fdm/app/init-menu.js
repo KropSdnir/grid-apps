@@ -140,6 +140,7 @@ export function menu() {
     sliceSupportMinArea: newInput(LANG.sp_mina_s, {title:LANG.sp_mina_l, convert:toFloat, bound:bound(0,2000)}),
     sliceSupportMinAreaPct:newInput(LANG.sp_minp_s, {title:LANG.sp_minp_l, convert:toFloat, bound:bound(0,100)}),
     sliceSupportHole:    newInput(LANG.sp_hole_s, {title:LANG.sp_hole_l, convert:toFloat, bound:bound(0,2000)}),
+    sliceSupportFlush:   newInput(LANG.sp_flsh_s, {title:LANG.sp_flsh_l, convert:toFloat, bound:bound(0,2)}),
     beltPedestalBase:    newInput(LANG.sp_base_s, {title:LANG.sp_base_l, convert:toFloat, bound:bound(0,10), show:isBelt}),
     beltPedestalMargin:  newInput(LANG.sp_bmrg_s, {title:LANG.sp_bmrg_l, convert:toFloat, bound:bound(0,20), show:isBelt}),
     // sliceSupportSpan:    newInput(LANG.sp_span_s, {title:LANG.sp_span_l, convert:toFloat, bound:bound(0.0,200.0), show:() => ui.sliceSupportEnable.checked }),
