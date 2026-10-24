@@ -21,6 +21,7 @@ const W_FULL = 248; // expanded width in px (see index.css)
 const SLIDER_BAND = 48; // px kept clear above the layer slider along the bottom edge
 const GAP = 8;
 const HOLD_DELAY = 400, HOLD_EVERY = 60; // ms, same as the layer slider buttons
+const CUBE_DELAY = 550, CUBE_EVERY = 350; // coarse cube arrows repeat slowly
 const ANGLE_PRESETS = [15, 5, 1, 0.5, 0.1, 0.05, 0.01, 0.005, 0.001];
 const MOVE_PRESETS = [50, 10, 5, 1, 0.5, 0.1, 0.05, 0.01];
 // view name -> [azimuth deg, elevation deg]
@@ -35,7 +36,8 @@ const VIEWS = {
 };
 
 let root, body, cube, ui = {}, inited = false;
-let step = 1, dstep = 5;
+let step = 1, dstep = 5, cstep = 45;
+let pending = null, pendingUntil = 0; // target of a coarse move still being animated
 let lastSig = '', lastJob = '', frame = 0;
 
 const local = {
@@ -126,6 +128,35 @@ function home() {
     space().view.fit(undefined, { left: iso[0] * DEG, up: (90 - iso[1]) * DEG, time: 300 });
 }
 
+/** arrows around the cube: the camera moves to the next multiple of the cube step (camera-movement convention:
+ *  right = azimuth +, left = azimuth -, up = elevation +, down = elevation -). Elevation stops at +-90 (top / bottom). */
+function coarse(dir, ev) {
+    const c = clamp(cstep * mult(ev), MIN_STEP, 180);
+    const now = Date.now();
+    let az, el;
+    if (pending && now < pendingUntil) {
+        ({ az, el } = pending);
+    } else {
+        const r = read();
+        az = r.az; el = r.el;
+    }
+    // the camera stops 1e-6 rad short of the poles: treat that as exactly +-90
+    if (Math.abs(el) > 89.999) el = Math.sign(el) * 90;
+    const EPS = 1e-6;
+    // next strictly larger / smaller multiple of c
+    const next = (v, up) => up ? (Math.floor(v / c + EPS) + 1) * c : (Math.ceil(v / c - EPS) - 1) * c;
+    if (dir === 'right') az = next(az, true);
+    else if (dir === 'left') az = next(az, false);
+    else if (dir === 'up') el = Math.min(90, next(el, true));
+    else if (dir === 'down') el = Math.max(-90, next(el, false));
+    az = wrap180(Math.round(az * 1e9) / 1e9);
+    el = Math.round(el * 1e9) / 1e9;
+    pending = { az, el };
+    pendingUntil = now + 320;
+    const t = ctrl().getTarget();
+    space().view.panTo(t.x, t.y, t.z, az * DEG, (90 - el) * DEG, 180);
+}
+
 function setProjection(ortho) {
     const conf = api.conf.get();
     if (conf && conf.controller) conf.controller.ortho = ortho;
@@ -164,7 +195,7 @@ function act(name, ev) {
 }
 
 /** button with press-and-hold repeat */
-function holdable(btn, fn) {
+function holdable(btn, fn, every = HOLD_EVERY, first = HOLD_DELAY) {
     let delay, timer;
     const stop = () => {
         clearTimeout(delay);
@@ -179,7 +210,7 @@ function holdable(btn, fn) {
         const mods = { shiftKey: ev.shiftKey, ctrlKey: ev.ctrlKey };
         try { btn.setPointerCapture(ev.pointerId) } catch (e) { }
         fn(mods);
-        delay = setTimeout(() => { timer = setInterval(() => fn(mods), HOLD_EVERY) }, HOLD_DELAY);
+        delay = setTimeout(() => { timer = setInterval(() => fn(mods), every) }, first);
     });
     for (const n of ['pointerup', 'pointercancel', 'lostpointercapture']) {
         btn.addEventListener(n, stop);
@@ -454,12 +485,19 @@ function build() {
     root = document.getElementById('view-nav');
     body = document.getElementById('vn-body');
     cube = document.getElementById('vn-cube');
-    for (const id of ['proj', 'step', 'stepPre', 'dstep', 'dstepPre', 'az', 'el', 'dist']) {
+    for (const id of ['proj', 'cstep', 'step', 'stepPre', 'dstep', 'dstepPre', 'az', 'el', 'dist']) {
         ui[id] = (api.ui && api.ui.nav && api.ui.nav[id]) || document.getElementById('vn-' + id.replace(/[A-Z]/g, c => '-' + c.toLowerCase()));
     }
     step = clamp(parseFloat(local.get('-step')) || 1, MIN_STEP, MAX_STEP);
     dstep = clamp(parseFloat(local.get('-dstep')) || 5, MIN_STEP, 1e6);
 
+    cstep = parseFloat(local.get('-cstep'));
+    if (![15, 30, 45, 90].includes(cstep)) cstep = 45;
+    ui.cstep.value = String(cstep);
+    ui.cstep.addEventListener('change', () => {
+        cstep = parseFloat(ui.cstep.value) || 45;
+        local.set('-cstep', String(cstep));
+    });
     fillPresets(ui.stepPre, ANGLE_PRESETS, '°');
     fillPresets(ui.dstepPre, MOVE_PRESETS, 'mm');
     ui.step.value = String(step);
@@ -486,6 +524,9 @@ function build() {
             holdable(b, mods => act(name, mods));
         }
     }
+    for (const b of root.querySelectorAll('[data-cube]')) {
+        holdable(b, ev => coarse(b.dataset.cube, ev), CUBE_EVERY, CUBE_DELAY);
+    }
     for (const b of root.querySelectorAll('[data-view]')) {
         b.addEventListener('click', ev => { root.focus({ preventScroll: true }); snap(b.dataset.view) });
     }
@@ -510,7 +551,7 @@ export const viewnav = {
         place();
         requestAnimationFrame(tick);
         // exposed for tests and scripts
-        api.viewnav = { read, act, snap, setProjection, step: () => step, dstep: () => dstep, MIN_STEP };
+        api.viewnav = { read, act, snap, coarse, cstep: () => cstep, setProjection, step: () => step, dstep: () => dstep, MIN_STEP };
     },
     toggle() {
         const on = !enabled();

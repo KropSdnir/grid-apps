@@ -209,6 +209,10 @@
                         <div class="vn-face vn-t" data-view="top" title="top">TOP</div>
                         <div class="vn-face vn-d" data-view="bottom" title="bottom">BOTTOM</div>
                     </div>
+                    <button class="vn-cb vn-cb-up" type="button" tabindex="-1" data-cube="up" title="camera up to the next multiple of the cube step (stops at the top view)&#13;hold to repeat slowly">&#9650;</button>
+                    <button class="vn-cb vn-cb-down" type="button" tabindex="-1" data-cube="down" title="camera down to the next multiple of the cube step (stops at the bottom view)&#13;hold to repeat slowly">&#9660;</button>
+                    <button class="vn-cb vn-cb-left" type="button" tabindex="-1" data-cube="left" title="camera turns left around the part by the cube step&#13;hold to repeat slowly">&#9664;</button>
+                    <button class="vn-cb vn-cb-right" type="button" tabindex="-1" data-cube="right" title="camera turns right around the part by the cube step&#13;hold to repeat slowly">&#9654;</button>
                 </div>
                 <div class="vn-pad" id="vn-orbit">
                     <span></span><button class="vn-btn" type="button" tabindex="-1" data-act="orbit-up" title="orbit up (model turns up, camera goes lower)&#13;hold to repeat">&#9650;</button><span></span>
@@ -234,6 +238,15 @@
                 <button class="vn-btn" type="button" tabindex="-1" data-act="home" title="home: isometric view (front, right, top) fitted to the contents, like FreeCAD">home</button>
                 <button class="vn-btn" type="button" tabindex="-1" data-act="zoom-out" title="zoom out by the move step&#13;hold to repeat">zoom &minus;</button>
                 <button class="vn-btn" type="button" tabindex="-1" data-act="zoom-in" title="zoom in by the move step&#13;hold to repeat">zoom +</button>
+            </div>
+            <div class="vn-row">
+                <label for="vn-cstep">cube step</label>
+                <select id="vn-cstep" title="degrees per click of the arrows around the cube (Shift = /10, Ctrl = x10)">
+                    <option value="15">15 &deg;</option>
+                    <option value="30">30 &deg;</option>
+                    <option value="45" selected>45 &deg;</option>
+                    <option value="90">90 &deg;</option>
+                </select>
             </div>
             <div class="vn-row">
                 <label for="vn-step">angle step</label>

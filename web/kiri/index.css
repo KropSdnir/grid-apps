@@ -2732,9 +2732,10 @@ details[open] summary::after {
 #view-nav.vn-tiny #vn-fold-ico { font-size: 11px; }
 .vn-top { display: flex; flex-direction: row; align-items: center; justify-content: space-between; margin-top: 2px; }
 #vn-cubewrap {
-    width: 84px;
-    height: 70px;
-    flex: 0 0 84px;
+    position: relative;
+    width: 90px;
+    height: 80px;
+    flex: 0 0 90px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2742,8 +2743,8 @@ details[open] summary::after {
 }
 #vn-cube {
     position: relative;
-    width: 40px;
-    height: 40px;
+    width: 36px;
+    height: 36px;
     transform-style: preserve-3d;
 }
 .vn-face {
@@ -2762,12 +2763,41 @@ details[open] summary::after {
     cursor: pointer;
 }
 .vn-face:hover { background: var(--blue-3, #bccbdb); color: #fff; }
-.vn-f { transform: translateZ(20px); }
-.vn-b { transform: rotateY(180deg) translateZ(20px); }
-.vn-r { transform: rotateY(90deg) translateZ(20px); }
-.vn-l { transform: rotateY(-90deg) translateZ(20px); }
-.vn-t { transform: rotateX(90deg) translateZ(20px); }
-.vn-d { transform: rotateX(-90deg) translateZ(20px); }
+.vn-f { transform: translateZ(18px); }
+.vn-b { transform: rotateY(180deg) translateZ(18px); }
+.vn-r { transform: rotateY(90deg) translateZ(18px); }
+.vn-l { transform: rotateY(-90deg) translateZ(18px); }
+.vn-t { transform: rotateX(90deg) translateZ(18px); }
+.vn-d { transform: rotateX(-90deg) translateZ(18px); }
+/* triangles around the cube, like FreeCAD's navigation cube */
+#view-nav .vn-cb {
+    position: absolute;
+    box-sizing: border-box;
+    width: 16px;
+    height: 16px;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 10px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.8;
+    cursor: pointer;
+    z-index: 2;
+}
+#view-nav .vn-cb:hover { background-color: var(--blue-3, #bccbdb); color: #fff; opacity: 1; }
+#view-nav .vn-cb:active { background-color: var(--blue-1, #607fa4); color: #fff; }
+.vn-cb-up { top: 0; left: 37px; }
+.vn-cb-down { bottom: 0; left: 37px; }
+.vn-cb-left { left: 0; top: 32px; }
+.vn-cb-right { right: 0; top: 32px; }
 .vn-pad {
     display: grid;
     flex: 0 0 auto;

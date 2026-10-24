@@ -100,6 +100,7 @@ export function bind() {
             fold:           $('vn-fold'),
             cube:           $('vn-cube'),
             proj:           $('vn-proj'),
+            cstep:          $('vn-cstep'),
             step:           $('vn-step'),
             stepPre:        $('vn-step-pre'),
             dstep:          $('vn-dstep'),
