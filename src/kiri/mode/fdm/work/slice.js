@@ -992,6 +992,7 @@ export function sliceOne(settings, widget, onupdate, ondone) {
                 tie: params.sliceSupportTie || process.sliceSupportTie || 0,
                 thinLen: process.sliceSupportThin || 0,
                 flush: process.sliceSupportFlush || 0,
+                finGap: process.sliceSupportFinGap || 0,
                 // pillars stay vertical in the world: the fill grid follows the belt skew
                 phase: widget.belt ? slice.z * widget.belt.slope : 0,
                 isBelt,
@@ -1203,13 +1204,53 @@ export function sliceOne(settings, widget, onupdate, ondone) {
         if (isBelt && process.sliceSupportThin > 0 && supportDensity) {
             let zoneLayers = Math.max(1, Math.round((process.sliceSupportThinZone || 3) / sliceHeight));
             let minArea = lineWidth * lineWidth;
+            // sliceSupportThinFraction: the thin zone of a column is this fraction of the
+            // column's own height (part above to belt below), at most the zone length
+            let frac = Math.min(0.95, process.sliceSupportThinFraction || 0);
+            let belt = widget.belt;
             for (let slice of slices) {
                 let polys = (slice.supports || []).filter(p => !p.solidPlate);
                 if (!polys.length) continue;
                 let above = [];
-                let s = slice.up;
-                for (let i = 0; i < zoneLayers && s; i++, s = s.up) {
-                    above.push(...(s.topPolys() || []));
+                if (frac > 0 && belt) {
+                    // a column stands vertical in the world: from layer to layer it moves
+                    // 'shear' sideways (vertical = 2), while the belt plane moves the other
+                    // way, so column and belt close in by dy + shear per layer. a point has
+                    // u layers of part above (counted along the vertical column) and
+                    // d = (belt - y) / (dy + shear) layers of column below; thin where
+                    // u <= frac / (1 - frac) * d, so only y <= belt - m * rate / ratio
+                    // may count the part m layers up
+                    let dy = sliceHeight * (belt.slope || 1);
+                    let shear = (process.sliceSupportVertical || 0) === 2 ? dy : 0;
+                    let rate = dy + shear;
+                    let ratio = frac / (1 - frac);
+                    let skewy = slice.z * belt.slope;
+                    let miny = Infinity, maxy = -Infinity;
+                    for (let p of polys) {
+                        miny = Math.min(miny, p.bounds.miny);
+                        maxy = Math.max(maxy, p.bounds.maxy);
+                    }
+                    let s = slice.up;
+                    for (let m = 1; m <= zoneLayers && s; m++, s = s.up) {
+                        let ym = skewy - m * rate / ratio;
+                        if (ym < miny) break;
+                        let tops = (s.topPolys() || []).filter(v => v);
+                        if (!tops.length) continue;
+                        let moved = tops.map(p => p.clone(true));
+                        // the support shadow starts unsheared on the layer under the part
+                        if (shear && m > 1) moved.forEach(p => p.move({ x: 0, y: (m - 1) * shear, z: 0 }));
+                        if (ym < maxy) {
+                            let cut = newPolygon().centerRectangle(
+                                newPoint(0, (miny - 10 + ym) / 2, slice.z), bounds.dim.x * 4 + 200, ym - miny + 10);
+                            moved = POLY.trimTo(moved, [ cut ]) || [];
+                        }
+                        above.push(...moved);
+                    }
+                } else {
+                    let s = slice.up;
+                    for (let i = 0; i < zoneLayers && s; i++, s = s.up) {
+                        above.push(...(s.topPolys() || []));
+                    }
                 }
                 if (!above.length) continue;
                 let contact = POLY.union(above, minArea, true);
@@ -1972,7 +2013,7 @@ function areaFill({ promises: fillQ, polys, angle, spacing, output, minLen, maxL
  * @see CONSTANTS.SUPPORT_AUTO_ANGLE_TALL - Auto angle for tall polygons (1000 = 0°)
  * @see CONSTANTS.SUPPORT_CONNECT_DISTANCE_MULT - Distance multiplier for line connection (2x)
  */
-function layerSupportFill({ promises, slice, lineWidth, density, isBelt, angle, outline, gap, spacingGap, minLine, tie, edge, thinLen, flush, phase }) {
+function layerSupportFill({ promises, slice, lineWidth, density, isBelt, angle, outline, gap, spacingGap, minLine, tie, edge, thinLen, flush, finGap, phase }) {
     let polys = slice.supports;
     if (polys) {
         supportPolyFill({
@@ -1988,6 +2029,7 @@ function layerSupportFill({ promises, slice, lineWidth, density, isBelt, angle, 
             edge,
             thinLen,
             flush,
+            finGap,
             phase,
             // every Nth layer prints cross lines (0 degrees) that tie the fins together
             tieLayer: tie > 0 && slice.index >= 0 && slice.index % tie === 0,
@@ -2039,7 +2081,7 @@ function layerSupportFill({ promises, slice, lineWidth, density, isBelt, angle, 
  * @see CONSTANTS.SUPPORT_INSET_RATIO - Inset ratio for fill area (1/3)
  * @see CONSTANTS.SUPPORT_CONNECT_DISTANCE_MULT - Distance multiplier for line connection (2x)
  */
-function supportPolyFill({ promises, polys, lineWidth, density, z, isBelt, angle, outline, spacingGap, minLine, tieLayer, tieSpacing, edge, thinLen, flush, phase }) {
+function supportPolyFill({ promises, polys, lineWidth, density, z, isBelt, angle, outline, spacingGap, minLine, tieLayer, tieSpacing, edge, thinLen, flush, finGap, phase }) {
     // calculate fill spacing: an explicit open gap between lines (mm) wins over density
     let spacing = spacingGap > 0 ? lineWidth + spacingGap : lineWidth * (1 / density);
     for (let poly of polys) {
@@ -2055,6 +2097,13 @@ function supportPolyFill({ promises, polys, lineWidth, density, z, isBelt, angle
         let inset = POLY.offset([poly], -lineWidth * CONSTANTS.SUPPORT_INSET_RATIO, {flat: true, z, wasm: true});
         // do the fill
         if (inset && inset.length > 0) {
+            // sliceSupportFinGap: fin columns spread evenly across the region, the first
+            // and last on its edges (belt support, fins along y, not on tie layers)
+            let finAng = (angle || auto) % 1000;
+            let fins = finGap > 0 && isBelt && !promises && !poly.solidPlate && !tieLayer && Math.abs(finAng - 90) < 1;
+            if (fins) {
+                supportFinColumns(inset, finGap, poly.fill = [], minLine);
+            } else
             areaFill({
                 angle: tieLayer && !poly.solidPlate ? CONSTANTS.SUPPORT_AUTO_ANGLE_TALL : (angle || auto),
                 output: poly.fill = [],
@@ -2100,7 +2149,7 @@ function supportPolyFill({ promises, polys, lineWidth, density, z, isBelt, angle
             }
             // edge fins: one fill line flush with each side of the region, so the
             // outermost column sits on the support edge instead of up to a grid step inside it
-            if (edge && !poly.solidPlate && !poly.thinSupport && !tieLayer && !promises && isBelt) {
+            if (edge && !fins && !poly.solidPlate && !poly.thinSupport && !tieLayer && !promises && isBelt) {
                 let shrink = lineWidth * 0.3;
                 for (let ip of inset) {
                     for (let ang of [ 90, -90 ]) {
@@ -2139,6 +2188,51 @@ function supportPolyFill({ promises, polys, lineWidth, density, z, isBelt, angle
             // outermost bottom layers hang over nothing
             if (flush > 0 && !outline && !promises && !poly.solidPlate) {
                 supportFlushRim(poly, z, lineWidth, flush);
+            }
+        }
+    }
+}
+
+/**
+ * sliceSupportFinGap: fin columns (vertical fill lines, along y) spread evenly
+ * across the width of a support region, one on each edge. the number of columns
+ * is the region width over the target gap (rounded), at least two, so the real
+ * gap is between 2/3 and 2x of the target and the outer columns are flush with
+ * the region edges instead of wherever a fixed grid happens to land.
+ *
+ * @param {Polygon[]} inset - region polygons (already inset for the line width)
+ * @param {number} gap - target gap between neighbouring columns in mm
+ * @param {Point[]} out - receives line end point pairs
+ * @param {number} minLine - drop lines shorter than this (mm)
+ */
+function supportFinColumns(inset, gap, out, minLine) {
+    let minx = Infinity, maxx = -Infinity;
+    for (let ip of inset) {
+        minx = Math.min(minx, ip.bounds.minx);
+        maxx = Math.max(maxx, ip.bounds.maxx);
+    }
+    let extent = maxx - minx;
+    if (!(extent > 0)) return;
+    // keep the end columns just inside the polygon so the clipper keeps them
+    let edge = Math.min(0.05, extent / 4);
+    let x0 = minx + edge, x1 = maxx - edge;
+    let count = Math.max(2, Math.round(extent / gap) + 1);
+    for (let i = 0; i < count; i++) {
+        let x = x0 + (x1 - x0) * i / (count - 1);
+        for (let ip of inset) {
+            let b = ip.bounds.clone();
+            // narrow bounds + wide spacing = exactly one scan line, at the start edge (maxx)
+            b.maxx = x;
+            b.minx = x - 1;
+            let saved = ip._bounds;
+            ip._bounds = b;
+            let lines = [];
+            // spacing far beyond the region: the scan stops after the one line at maxx
+            POLY.fillArea([ ip ], 90, 1000, lines, minLine > 0 ? minLine : undefined);
+            ip._bounds = saved;
+            for (let k = 0; k + 1 < lines.length; k += 2) {
+                lines[k].index = lines[k + 1].index = i;
+                out.push(lines[k], lines[k + 1]);
             }
         }
     }

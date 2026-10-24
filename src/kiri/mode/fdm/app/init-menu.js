@@ -130,6 +130,8 @@ export function menu() {
     sliceSupportEdge:    newBoolean(LANG.sp_edge_s, onBooleanClick, {title:LANG.sp_edge_l, show:isBelt}),
     sliceSupportThin:    newInput(LANG.sp_thin_s, {title:LANG.sp_thin_l, convert:toFloat, bound:bound(0.0,20.0), show:isBelt}),
     sliceSupportThinZone:newInput(LANG.sp_tzon_s, {title:LANG.sp_tzon_l, convert:toFloat, bound:bound(0.0,50.0), show:isBelt}),
+    sliceSupportThinFraction:newInput(LANG.sp_tfrc_s, {title:LANG.sp_tfrc_l, convert:toFloat, bound:bound(0.0,0.95), show:isBelt}),
+    sliceSupportFinGap:  newInput(LANG.sp_fing_s, {title:LANG.sp_fing_l, convert:toFloat, bound:bound(0.0,50.0), show:isBelt}),
     sliceSupportMinLine: newInput(LANG.sp_minl_s, {title:LANG.sp_minl_l, convert:toFloat, bound:bound(0.0,50.0)}),
     outputSupportMult:   newInput(LANG.sp_flow_s, {title:LANG.sp_flow_l, convert:toFloat, bound:bound(0.0,3.0)}),
     sliceSupportMinWidth:newInput(LANG.sp_minw_s, {title:LANG.sp_minw_l, convert:toFloat, bound:bound(0.0,50.0)}),
