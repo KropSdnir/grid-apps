@@ -174,36 +174,44 @@ export function init() {
         }
     });
 
-    // fan speeds: the field shows a percent, the saved value stays the raw 0-255 PWM value.
-    // A second small box beside it shows (and can edit) the raw value
-    for (let key of [ 'outputFanSpeed', 'firstLayerFanSpeed' ]) {
+    // fan speeds and densities: the field shows a percent, the saved value stays the raw one
+    // (fan: 0-255 PWM, density: fraction 0-1). A second small box beside the field shows
+    // (and can edit) the raw value
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    const dualFields = {
+        outputFanSpeed:     { size: 3, title: '0 - 255', parse: v => clamp(Math.round(parseFloat(v) || 0), 0, 255), pct: r => Math.round(r * 100 / 255) },
+        firstLayerFanSpeed: { size: 3, title: '0 - 255', parse: v => clamp(Math.round(parseFloat(v) || 0), 0, 255), pct: r => Math.round(r * 100 / 255) },
+        sliceFillSparse:    { size: 4, title: '0.0 - 1.0', parse: v => clamp(parseFloat(v) || 0, 0, 1), pct: r => Math.round(r * 1000) / 10 },
+        sliceSupportDensity:{ size: 4, title: '0.0 - 1.0', parse: v => clamp(parseFloat(v) || 0, 0, 1), pct: r => Math.round(r * 1000) / 10 }
+    };
+    for (let [ key, cfg ] of Object.entries(dualFields)) {
         const ip = ui[key];
         if (!ip || !ip.parentNode) continue;
         const box = document.createElement('input');
         box.type = 'text';
-        box.size = 3;
-        box.className = 'fan-raw';
-        box.title = '0 - 255';
+        box.size = cfg.size;
+        box.className = 'dual-raw';
+        box.title = cfg.title;
         box.setAttribute('spellcheck', 'false');
-        box.style.cssText = 'margin-left:6px;width:3.2em;text-align:right;opacity:0.75';
+        box.style.cssText = `margin-left:6px;width:${cfg.size + 0.2}em;text-align:right;opacity:0.75`;
         ip.parentNode.appendChild(box);
         ip._rawBox = box;
         // raw value (what the profile and the G-code hold) -> percent field + raw box
         ip.setv = raw => {
-            let r = Math.max(0, Math.min(255, Math.round(parseFloat(raw) || 0)));
+            let r = cfg.parse(raw);
             ip._raw = r;
-            ip.value = Math.round(r * 100 / 255);
+            ip.value = cfg.pct(r);
             box.value = r;
         };
         box.addEventListener('keydown', ev => {
             const k = ev.key;
             if (k === 'Enter') return box.blur();
-            if ((k >= '0' && k <= '9') || k === 'Backspace' || k === 'Delete' || k === 'ArrowLeft' ||
+            if ((k >= '0' && k <= '9') || k === '.' || k === 'Backspace' || k === 'Delete' || k === 'ArrowLeft' ||
                 k === 'ArrowRight' || k === 'Tab' || ev.metaKey || ev.ctrlKey) return;
             ev.preventDefault();
         });
         box.addEventListener('blur', () => {
-            ip.setv(box.value === '' ? ip._raw : parseInt(box.value));
+            ip.setv(box.value === '' ? ip._raw : cfg.parse(box.value));
             ip.dispatchEvent(new Event('blur'));
         });
         // follow the enabled state of the percent field (disabled in the slice view)

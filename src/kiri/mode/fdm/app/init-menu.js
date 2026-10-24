@@ -103,6 +103,19 @@ function fanToRaw() {
     return raw;
 }
 
+// densities are edited as a percent (0-100, one decimal); the saved value stays the
+// fraction (0-1: 30 % = 0.3, 12.5 % = 0.125). An untouched field keeps its exact fraction
+function pctToFraction() {
+    let nv = this.value !== '' ? parseFloat(this.value) : 0;
+    if (isNaN(nv)) nv = 0;
+    let t = Math.round(Math.max(0, Math.min(100, nv)) * 10);   // tenths of a percent
+    let raw = (this._raw !== undefined && Math.round(this._raw * 1000) === t) ? this._raw : t / 1000;
+    this._raw = raw;
+    this.value = t / 10;
+    if (this._rawBox) this._rawBox.value = raw;
+    return raw;
+}
+
 // base percentage: base % = 100 - top %. shown on the field, stored as the fraction
 function baseToFraction() {
     let nv = this.value !== '' ? parseFloat(this.value) : 0;
@@ -143,7 +156,7 @@ export function menu() {
     sliceSolidMinThick:  newInput(LANG.ad_mthk_s, {title:LANG.ad_mthk_l, convert:toFloat}),
     _____:               newGroup(LANG.fi_menu, $('fdm-fill'), { modes:FDM, driven, hideable, separator, group:"fdm-fill" }),
     sliceFillType:       newSelect(LANG.fi_type, {trigger}, "infill"),
-    sliceFillSparse:     newInput(LANG.fi_pcnt_s, {title:LANG.fi_pcnt_l, convert:toFloat, bound:bound(0.0,1.0), show:hasInfill}),
+    sliceFillSparse:     newInput(LANG.fi_pctp_s, {title:LANG.fi_pctp_l, convert:pctToFraction, bound:bound(0,100), show:hasInfill, size:4}),
     sliceFillRepeat:     newInput(LANG.fi_rept_s, {title:LANG.fi_rept_l, convert:toInt,   bound:bound(1,10),    show:fillIsLinear}),
     _____:               newGroup(LANG.fh_menu, $('fdm-heat'), { modes:FDM, driven, hideable, separator, group:"fdm-heat" }),
     outputTemp:          newInput(LANG.ou_nozl_s, {title:LANG.ou_nozl_l, convert:toInt}),
@@ -159,7 +172,7 @@ export function menu() {
     sliceSupportNozzle:  newSelect(LANG.sp_nozl_s, {title:LANG.sp_nozl_l, show:isMultiHead}, "extruders"),
     separator:           newBlank({ class:"set-sep", driven }),
     sliceSupportAngle:   newInput(LANG.sp_angl_s, {title:LANG.sp_angl_l, convert:toFloat, bound:bound(0.0,90.0)}),
-    sliceSupportDensity: newInput(LANG.sp_dens_s, {title:LANG.sp_dens_l, convert:toFloat, bound:bound(0.0,1.0)}),
+    sliceSupportDensity: newInput(LANG.sp_denp_s, {title:LANG.sp_denp_l, convert:pctToFraction, bound:bound(0,100), size:4}),
     sliceSupportSpacing: newInput(LANG.sp_spac_s, {title:LANG.sp_spac_l, convert:toFloat, bound:bound(0.0,20.0)}),
     sliceSupportMinLine: newInput(LANG.sp_minl_s, {title:LANG.sp_minl_l, convert:toFloat, bound:bound(0.0,50.0)}),
     outputSupportMult:   newInput(LANG.sp_flow_s, {title:LANG.sp_flow_l, convert:toFloat, bound:bound(0.0,3.0)}),
